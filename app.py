@@ -1032,7 +1032,7 @@ elif st.session_state.tab == "calendar":
     for i, day_name in enumerate(days_of_week):
         with cols[i]:
             color = "#f87171" if i == 0 else "#3b82f6" if i == 6 else "#666"
-            st.markdown(f"<div style='text-align: center; font-size: 10px; color: {color}; font-weight: 700; margin-bottom: 4px;'>{day_name}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center; font-size: 9px; color: {color}; font-weight: 700; margin-bottom: 2px;'>{day_name}</div>", unsafe_allow_html=True)
     
     # 日付グリッド（ボタン形式）
     for week in cal:
@@ -1041,7 +1041,7 @@ elif st.session_state.tab == "calendar":
             with week_cols[i]:
                 if day == 0:
                     # 空セル
-                    st.markdown("<div style='height: 60px;'></div>", unsafe_allow_html=True)
+                    st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
                 else:
                     day_date = date(st.session_state.cal_month.year, st.session_state.cal_month.month, day)
                     day_str = day_date.isoformat()
@@ -1069,10 +1069,10 @@ elif st.session_state.tab == "calendar":
                     <div style='
                         background: {bg_color};
                         border: {border_width} solid {border_color};
-                        border-radius: 8px;
-                        padding: 6px 4px;
+                        border-radius: 6px;
+                        padding: 4px 2px;
                         text-align: center;
-                        min-height: 60px;
+                        min-height: 40px;
                         display: flex;
                         flex-direction: column;
                         justify-content: center;
@@ -1080,8 +1080,8 @@ elif st.session_state.tab == "calendar":
                         cursor: pointer;
                         transition: all 0.2s;
                     '>
-                        <div style='font-weight: {'800' if is_today else '600' if has_entries else '400'}; font-size: 14px; color: {day_color}; margin-bottom: 2px;'>{day}</div>
-                        <div style='font-size: 18px; line-height: 1;'>{stamps[:2] if stamps else ''}</div>
+                        <div style='font-weight: {'800' if is_today else '600' if has_entries else '400'}; font-size: 11px; color: {day_color}; margin-bottom: 1px;'>{day}</div>
+                        <div style='font-size: 14px; line-height: 1;'>{stamps[:2] if stamps else ''}</div>
                     </div>
                     """, unsafe_allow_html=True)
     
