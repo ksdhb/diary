@@ -6,6 +6,7 @@ import calendar
 import base64
 from io import BytesIO
 from PIL import Image
+import pillow_heif
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import uuid
@@ -156,6 +157,29 @@ MOOD_STAMPS = [
     {"emoji": "😰", "label": "不安"},
     {"emoji": "😢", "label": "悲しい"},
 ]
+
+
+# 画像を開く（HEIC対応）
+def open_image(file):
+    """画像ファイルを開く（HEIC/HEIF形式にも対応）"""
+    try:
+        # HEIC/HEIF形式のチェック
+        if file.name.lower().endswith(('.heic', '.heif')):
+            # pillow_heifでHEICを読み込み
+            heif_file = pillow_heif.read_heif(file)
+            # PILイメージに変換
+            image = Image.frombytes(
+                heif_file.mode,
+                heif_file.size,
+                heif_file.data,
+                "raw",
+            )
+        else:
+            # 通常の画像形式
+            image = Image.open(file)
+        return image
+    except Exception as e:
+        raise ValueError(f"画像の読み込みに失敗しました: {e}")
 
 # Googleスプレッドシート接続
 @st.cache_resource
@@ -603,15 +627,19 @@ elif st.session_state.get('screen') == 'post_evening':
         diary_text = st.text_area("日記を書く", height=150, max_chars=500, key="diary_text", placeholder="今日はどんな日だった?")
         
         # 画像アップロード
-        uploaded_file = st.file_uploader("📷 写真を追加（任意）", type=["jpg", "jpeg", "png"], key="photo")
+        uploaded_file = st.file_uploader("📷 写真を追加（任意）", type=["jpg", "jpeg", "png", "heic", "heif"], key="photo")
         image_data = None
         if uploaded_file:
-            image = Image.open(uploaded_file)
-            image.thumbnail((800, 800))
-            buffered = BytesIO()
-            image.save(buffered, format="JPEG")
-            image_data = base64.b64encode(buffered.getvalue()).decode()
-            st.image(image, use_container_width=True)
+            try:
+                image = open_image(uploaded_file)
+                image.thumbnail((800, 800))
+                buffered = BytesIO()
+                image.save(buffered, format="JPEG")
+                image_data = base64.b64encode(buffered.getvalue()).decode()
+                st.image(image, use_container_width=True)
+            except Exception as e:
+                st.error(f"画像の処理に失敗しました: {e}")
+                image_data = None
         
         col1, col2 = st.columns(2)
         with col1:
@@ -735,15 +763,19 @@ elif st.session_state.get('screen') == 'edit_evening':
             st.markdown("**現在の写真:**")
             st.image(f"data:image/jpeg;base64,{current_entry['image_data']}", use_container_width=True)
         
-        uploaded_file = st.file_uploader("📷 写真を変更（任意）", type=["jpg", "jpeg", "png"], key="edit_photo")
+        uploaded_file = st.file_uploader("📷 写真を変更（任意）", type=["jpg", "jpeg", "png", "heic", "heif"], key="edit_photo")
         image_data = None
         if uploaded_file:
-            image = Image.open(uploaded_file)
-            image.thumbnail((800, 800))
-            buffered = BytesIO()
-            image.save(buffered, format="JPEG")
-            image_data = base64.b64encode(buffered.getvalue()).decode()
-            st.image(image, use_container_width=True)
+            try:
+                image = open_image(uploaded_file)
+                image.thumbnail((800, 800))
+                buffered = BytesIO()
+                image.save(buffered, format="JPEG")
+                image_data = base64.b64encode(buffered.getvalue()).decode()
+                st.image(image, use_container_width=True)
+            except Exception as e:
+                st.error(f"画像の処理に失敗しました: {e}")
+                image_data = None
         
         col1, col2, col3 = st.columns(3)
         with col1:
