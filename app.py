@@ -1133,11 +1133,11 @@ elif st.session_state.tab == "calendar":
     # カレンダーを中央寄せで横幅50%に
     cal_left, cal_center, cal_right = st.columns([1, 2, 1])
     
-        with cal_center:
-            st.markdown("### 📅 カレンダー")
+    with cal_center:
+        st.markdown("### 📅 カレンダー")
         
         # 月移動ボタン
-            col1, col2, col3 = st.columns([1, 2, 1])
+        col1, col2, col3 = st.columns([1, 2, 1])
         with col1:
             if st.button("◀ 前月", key="prev_month", use_container_width=True):
                 st.session_state.cal_month = st.session_state.cal_month.replace(day=1) - timedelta(days=1)
@@ -1148,51 +1148,51 @@ elif st.session_state.tab == "calendar":
             if st.button("次月 ▶", key="next_month", use_container_width=True):
                 st.session_state.cal_month = (st.session_state.cal_month.replace(day=28) + timedelta(days=4)).replace(day=1)
                 st.rerun()
-    
+        
         st.markdown("---")
-    
-    # 今月のエントリーを取得
+        
+        # 今月のエントリーを取得
         cal = calendar.monthcalendar(st.session_state.cal_month.year, st.session_state.cal_month.month)
-    
-    # 曜日ヘッダー（小さめ）
+        
+        # 曜日ヘッダー（小さめ）
         days_of_week = ["日", "月", "火", "水", "木", "金", "土"]
         cols = st.columns(7)
         for i, day_name in enumerate(days_of_week):
             with cols[i]:
                 color = "#f87171" if i == 0 else "#3b82f6" if i == 6 else "#666"
                 st.markdown(f"<div style='text-align: center; font-size: 5px; color: {color}; font-weight: 600; margin-bottom: 0px;'>{day_name}</div>", unsafe_allow_html=True)
-    
-    # 日付グリッド（ボタン形式）
+        
+        # 日付グリッド（ボタン形式）
         for week in cal:
             week_cols = st.columns(7)
             for i, day in enumerate(week):
                 with week_cols[i]:
                     if day == 0:
-                    # 空セル
+                        # 空セル
                         st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
                     else:
                         day_date = date(st.session_state.cal_month.year, st.session_state.cal_month.month, day)
                         day_str = day_date.isoformat()
                         day_entries = entries[entries['entry_date'] == day_str] if not entries.empty else pd.DataFrame()
-                    
+                        
                         is_today = day_date == get_today_jst()
                         has_entries = not day_entries.empty
-                    
-                    # スタンプを取得
+                        
+                        # スタンプを取得
                         stamps = ""
                         if has_entries:
                             for _, entry in day_entries.iterrows():
                                 if pd.notna(entry['morning_stamp_emoji']):
                                     stamps += str(entry['morning_stamp_emoji'])
-                    
-                    # 日付の色
+                        
+                        # 日付の色
                         day_color = "#dc2626" if i == 0 else "#2563eb" if i == 6 else "#374151"
-                    
-                    # ボタン型カード
+                        
+                        # ボタン型カード
                         bg_color = "#fef3c7" if is_today else "#fce7f3" if has_entries else "#f9fafb"
                         border_color = "#f59e0b" if is_today else "#f472b6" if has_entries else "#e5e7eb"
                         border_width = "3px" if is_today else "2px" if has_entries else "1px"
-                    
+                        
                         st.markdown(f"""
                         <div style='
                             background: {bg_color};
@@ -1208,22 +1208,22 @@ elif st.session_state.tab == "calendar":
                             <div style='font-weight: {'700' if is_today else '500' if has_entries else '400'}; font-size: 6px; color: {day_color}; line-height: 1;'>{day}</div>
                         </div>
                         """, unsafe_allow_html=True)
-    
+        
         st.markdown("---")
-    
-    # 今月の概要
+        
+        # 今月の概要
         month_entries = entries[pd.to_datetime(entries['entry_date']).dt.month == st.session_state.cal_month.month] if not entries.empty else pd.DataFrame()
         month_entries = month_entries[pd.to_datetime(month_entries['entry_date']).dt.year == st.session_state.cal_month.year] if not month_entries.empty else pd.DataFrame()
-    
+        
         if not month_entries.empty:
             st.markdown(f"**📊 今月の記録: {len(month_entries)}日**")
-        
-        # 最近のエントリーを3件表示
+            
+            # 最近のエントリーを3件表示
             st.markdown("**最近の日記:**")
             for _, entry in month_entries.head(3).iterrows():
                 user = me if entry['user_id'] == st.session_state.current_user else partner
                 entry_date = entry['entry_date']
-            
+                
                 with st.expander(f"{user['avatar']} {entry_date} - {user['name']}"):
                     if pd.notna(entry['morning_stamp_emoji']):
                         st.markdown(f"☀️ {entry['morning_stamp_emoji']} {entry['morning_stamp_label']}")
@@ -1231,11 +1231,10 @@ elif st.session_state.tab == "calendar":
                         st.markdown(f"🌙 {entry['evening_stamp_emoji']} {entry['evening_stamp_label']}")
                         if pd.notna(entry['evening_diary_text']):
                             st.markdown(f"_{entry['evening_diary_text'][:50]}..._" if len(str(entry['evening_diary_text'])) > 50 else entry['evening_diary_text'])
-            else:
-                st.info("今月はまだ投稿がありません")
+        else:
+            st.info("今月はまだ投稿がありません")
 
 
-# ============================================
 elif st.session_state.tab == "history":
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("### 📖 履歴")
