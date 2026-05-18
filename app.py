@@ -1,11 +1,16 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import json
-import os
+import calendar
+import base64
+from io import BytesIO
+from PIL import Image
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import uuid
 
-# ページ設定
+# ページ設定（レスポンシブ対応）
 st.set_page_config(
     page_title="📔 ふたりの日記",
     page_icon="📔",
@@ -13,21 +18,125 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# カスタムCSS
+# カスタムCSS（スマホ完全対応版）
 st.markdown("""
 <style>
-    .main { max-width: 430px; margin: 0 auto; padding-bottom: 80px; }
-    .stButton>button { width: 100%; border-radius: 20px; font-weight: 700; }
-    .card { background: rgba(255,255,255,0.9); border-radius: 20px; padding: 18px; margin: 12px 0; box-shadow: 0 4px 24px rgba(0,0,0,0.07); }
-    .stat-box { border-radius: 16px; padding: 12px; text-align: center; background: linear-gradient(135deg,rgba(244,114,182,0.13),rgba(236,72,153,0.13)); }
+    /* 全デバイス共通: 2カラムレイアウト */
+    .main { 
+        max-width: 900px; 
+        margin: 0 auto; 
+        padding: 0 15px 90px 15px;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    /* 小さい画面では少しpaddingを減らす */
+    @media (max-width: 400px) {
+        .main {
+            padding: 0 10px 90px 10px;
+        }
+    }
+    
+    /* ボタン */
+    .stButton>button { 
+        width: 100%; 
+        border-radius: 20px; 
+        font-weight: 700;
+        min-height: 44px;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+        transition: all 0.2s ease;
+    }
+    .stButton>button:active {
+        transform: scale(0.98);
+    }
+    
+    /* カード */
+    .card { 
+        background: rgba(255,255,255,0.95); 
+        border-radius: 20px; 
+        padding: 18px; 
+        margin: 12px 0; 
+        box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+        backdrop-filter: blur(10px);
+    }
+    
+    /* 統計ボックス */
+    .stat-box { 
+        border-radius: 16px; 
+        padding: 14px; 
+        text-align: center; 
+        background: linear-gradient(135deg,rgba(244,114,182,0.15),rgba(236,72,153,0.15));
+        border: 2px solid rgba(244,114,182,0.3);
+    }
+    
+    /* コメント */
+    .comment-box {
+        background: #f9fafb;
+        border-radius: 12px;
+        padding: 10px 12px;
+        margin: 8px 0;
+        border-left: 3px solid #f472b6;
+    }
+    
+    /* ヘッダーコンテナ */
+    .header-container {
+        background: linear-gradient(135deg, #f472b6, #ec4899);
+        padding: 14px 18px;
+        border-radius: 10px;
+        margin: 0 0 10px;
+    }
+    .header-flex {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        position: relative;
+    }
+    .header-avatar {
+        font-size: 36px;
+    }
+    .header-text {
+        flex: 1;
+    }
+    .header-title {
+        color: white;
+        font-weight: 800;
+        font-size: 16px;
+    }
+    .header-subtitle {
+        color: rgba(255,255,255,0.8);
+        font-size: 10px;
+    }
+    .badge {
+        background: #ef4444;
+        color: white;
+        border-radius: 12px;
+        padding: 4px 8px;
+        font-size: 11px;
+        font-weight: 700;
+        margin-left: auto;
+    }
+    
+    /* フォント */
     h1 { font-size: 20px !important; }
     h2 { font-size: 16px !important; color: #ec4899; }
     h3 { font-size: 14px !important; }
+    
+    /* スクロールバー非表示（iOS風） */
+    ::-webkit-scrollbar { display: none; }
+    
+    /* ダークモード対応 */
+    @media (prefers-color-scheme: dark) {
+        .card { 
+            background: rgba(30,30,30,0.95);
+            color: #e5e7eb;
+        }
+        .comment-box {
+            background: #1f2937;
+            color: #e5e7eb;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
-
-# データベースパス
-DB_PATH = "/tmp/diary.db"
 
 # スタンプ定義
 CONDITION_STAMPS = [
@@ -35,173 +144,342 @@ CONDITION_STAMPS = [
     {"emoji": "😊", "label": "良い"},
     {"emoji": "😐", "label": "普通"},
     {"emoji": "😔", "label": "微妙"},
-    {"emoji": "😴", "label": "眠い"},
-    {"emoji": "🤒", "label": "体調不良"},
 ]
 
-DIARY_STAMPS = [
-    {"emoji": "⭐", "label": "充実"},
-    {"emoji": "😌", "label": "穏やか"},
-    {"emoji": "😅", "label": "疲れた"},
-    {"emoji": "😢", "label": "辛かった"},
-    {"emoji": "🎉", "label": "楽しかった"},
-    {"emoji": "💪", "label": "頑張った"},
+MOOD_STAMPS = [
+    {"emoji": "🥰", "label": "ラブラブ"},
+    {"emoji": "😊", "label": "幸せ"},
+    {"emoji": "🤗", "label": "楽しい"},
+    {"emoji": "😌", "label": "平和"},
+    {"emoji": "😐", "label": "普通"},
+    {"emoji": "🤔", "label": "考え中"},
+    {"emoji": "😰", "label": "不安"},
+    {"emoji": "😢", "label": "悲しい"},
 ]
 
-AVATARS = ["🐱", "🐶", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐸", "🐧", "🦋", "🌸", "⭐", "🍀", "🌙", "☀️", "🍎", "🍓", "🎀"]
+# Googleスプレッドシート接続
+@st.cache_resource
+def init_gspread():
+    """Googleスプレッドシートに接続"""
+    try:
+        # Streamlit Secretsから認証情報を取得
+        credentials_dict = dict(st.secrets["gcp_service_account"])
+        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+        credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
+        client = gspread.authorize(credentials)
+        
+        # スプレッドシートを開く
+        spreadsheet = client.open_by_key(st.secrets["spreadsheet_key"])
+        return spreadsheet
+    except Exception as e:
+        st.error(f"スプレッドシート接続エラー: {e}")
+        st.info("Streamlit CloudのSecretsが正しく設定されているか確認してください")
+        st.stop()
+
+def get_or_create_worksheet(spreadsheet, sheet_name, headers):
+    """ワークシートを取得または作成"""
+    try:
+        worksheet = spreadsheet.worksheet(sheet_name)
+    except gspread.exceptions.WorksheetNotFound:
+        worksheet = spreadsheet.add_worksheet(title=sheet_name, rows=1000, cols=20)
+        worksheet.append_row(headers)
+    return worksheet
 
 # データベース初期化
 def init_database():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    """スプレッドシートのシートを初期化"""
+    spreadsheet = init_gspread()
     
-    # エントリーテーブル
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS entries (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            entry_date TEXT NOT NULL,
-            morning_stamp_emoji TEXT,
-            morning_stamp_label TEXT,
-            morning_message TEXT,
-            evening_stamp_emoji TEXT,
-            evening_stamp_label TEXT,
-            evening_diary_text TEXT,
-            evening_reactions TEXT,
-            evening_reaction_msg TEXT,
-            created_at TEXT,
-            updated_at TEXT
-        )
-    """)
+    # entriesシート
+    get_or_create_worksheet(
+        spreadsheet, 
+        "entries",
+        ["id", "user_id", "entry_date", "morning_stamp_emoji", "morning_stamp_label", 
+         "morning_message", "evening_stamp_emoji", "evening_stamp_label", "evening_diary_text",
+         "image_data", "is_favorite", "created_at", "updated_at"]
+    )
     
-    # 設定テーブル
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT
-        )
-    """)
+    # commentsシート
+    get_or_create_worksheet(
+        spreadsheet,
+        "comments",
+        ["id", "entry_id", "user_id", "comment_text", "created_at"]
+    )
     
-    # 初期設定の挿入
-    cursor.execute("SELECT COUNT(*) FROM settings")
-    if cursor.fetchone()[0] == 0:
+    # settingsシート
+    settings_ws = get_or_create_worksheet(
+        spreadsheet,
+        "settings",
+        ["key", "value"]
+    )
+    
+    # デフォルト設定を追加（シートが空の場合）
+    if len(settings_ws.get_all_values()) <= 1:
         default_settings = [
-            ("user_a_name", "あなた"),
-            ("user_a_avatar", "🐱"),
-            ("user_b_name", "パートナー"),
-            ("user_b_avatar", "🐶"),
-            ("anniversary", ""),
+            ["user_a_name", "あなた"],
+            ["user_a_avatar", "👩"],
+            ["user_b_name", "パートナー"],
+            ["user_b_avatar", "👨"],
+            ["anniversary", ""]
         ]
-        cursor.executemany("INSERT INTO settings (key, value) VALUES (?, ?)", default_settings)
-    
-    conn.commit()
-    conn.close()
+        for setting in default_settings:
+            settings_ws.append_row(setting)
 
-# 設定の読み込み
+# 設定を読み込む
 def load_settings():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT key, value FROM settings")
-    settings = {row[0]: row[1] for row in cursor.fetchall()}
-    conn.close()
+    spreadsheet = init_gspread()
+    worksheet = spreadsheet.worksheet("settings")
+    rows = worksheet.get_all_values()[1:]  # ヘッダーをスキップ
+    settings = {row[0]: row[1] for row in rows if len(row) >= 2}
     return settings
 
-# 設定の保存
+# 設定を保存する
 def save_settings(settings):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    spreadsheet = init_gspread()
+    worksheet = spreadsheet.worksheet("settings")
+    
     for key, value in settings.items():
-        cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
-    conn.commit()
-    conn.close()
+        cell = worksheet.find(key)
+        if cell:
+            worksheet.update_cell(cell.row, 2, value)
+        else:
+            worksheet.append_row([key, value])
 
-# エントリーの読み込み
+# エントリーを読み込む
 def load_entries():
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql_query("SELECT * FROM entries ORDER BY entry_date DESC, created_at DESC", conn)
-    conn.close()
+    spreadsheet = init_gspread()
+    worksheet = spreadsheet.worksheet("entries")
+    data = worksheet.get_all_records()
+    
+    if not data:
+        # 空の場合は正しいカラムを持つ空のDataFrameを返す
+        return pd.DataFrame(columns=[
+            'id', 'user_id', 'entry_date', 'morning_stamp_emoji', 'morning_stamp_label',
+            'morning_message', 'evening_stamp_emoji', 'evening_stamp_label', 'evening_diary_text',
+            'image_data', 'is_favorite', 'created_at', 'updated_at'
+        ])
+    
+    df = pd.DataFrame(data)
+    
+    # 空文字列をNaNに変換
+    df = df.replace('', pd.NA)
+    # is_favoriteを数値に変換
+    if 'is_favorite' in df.columns:
+        df['is_favorite'] = pd.to_numeric(df['is_favorite'], errors='coerce').fillna(0).astype(int)
+    # entry_dateでソート
+    df = df.sort_values('entry_date', ascending=False)
+    
     return df
 
-# エントリーの保存
-def save_entry(user_id, entry_date, morning=None, evening=None):
-    import uuid
-    from datetime import datetime
+# コメントを読み込む
+def load_comments(entry_id):
+    spreadsheet = init_gspread()
+    worksheet = spreadsheet.worksheet("comments")
+    rows = worksheet.get_all_values()[1:]  # ヘッダーをスキップ
+    comments = [row for row in rows if len(row) >= 5 and row[1] == entry_id]
+    return comments
+
+# コメントを追加
+def add_comment(entry_id, user_id, comment_text):
+    spreadsheet = init_gspread()
+    worksheet = spreadsheet.worksheet("comments")
     
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    comment_id = str(uuid.uuid4())
+    created_at = datetime.now().isoformat()
+    worksheet.append_row([comment_id, entry_id, user_id, comment_text, created_at])
+
+# コメントを更新
+def update_comment(comment_id, new_text):
+    spreadsheet = init_gspread()
+    worksheet = spreadsheet.worksheet("comments")
     
-    # 既存エントリーの確認
-    cursor.execute("SELECT id FROM entries WHERE user_id = ? AND entry_date = ?", (user_id, entry_date))
-    existing = cursor.fetchone()
+    cell = worksheet.find(comment_id)
+    if cell:
+        worksheet.update_cell(cell.row, 4, new_text)  # comment_textは4列目
+
+# コメントを削除
+def delete_comment(comment_id):
+    spreadsheet = init_gspread()
+    worksheet = spreadsheet.worksheet("comments")
+    
+    cell = worksheet.find(comment_id)
+    if cell:
+        worksheet.delete_rows(cell.row)
+
+# お気に入りトグル
+def toggle_favorite(entry_id):
+    spreadsheet = init_gspread()
+    worksheet = spreadsheet.worksheet("entries")
+    
+    cell = worksheet.find(entry_id)
+    if cell:
+        current = worksheet.cell(cell.row, 11).value  # is_favoriteは11列目
+        new_value = 0 if str(current) == "1" else 1
+        worksheet.update_cell(cell.row, 11, new_value)
+
+# 連続投稿日数を計算
+def calculate_streak(entries):
+    if entries.empty:
+        return 0
+    
+    entries_sorted = entries.sort_values('entry_date', ascending=False)
+    streak = 0
+    expected_date = date.today()
+    
+    for entry_date_str in entries_sorted['entry_date']:
+        try:
+            entry_date = datetime.strptime(str(entry_date_str), "%Y-%m-%d").date()
+            if entry_date == expected_date:
+                streak += 1
+                expected_date = expected_date - timedelta(days=1)
+            elif entry_date < expected_date:
+                break
+        except:
+            continue
+    
+    return streak
+
+# 統計情報を取得
+def get_statistics(entries):
+    stats = {
+        "total_entries": len(entries),
+        "this_month": len(entries[pd.to_datetime(entries['entry_date']).dt.month == date.today().month]) if not entries.empty else 0,
+        "streak": calculate_streak(entries)
+    }
+    return stats
+
+# 未読コメント数を取得
+def get_unread_comments_count(user_id, entries):
+    if entries.empty:
+        return 0
+    
+    partner_entries = entries[entries['user_id'] != user_id]
+    unread_count = 0
+    
+    for _, entry in partner_entries.iterrows():
+        comments = load_comments(entry['id'])
+        for comment in comments:
+            if len(comment) >= 3 and comment[2] == user_id:
+                unread_count += 1
+    
+    return unread_count
+
+# エントリーを保存（既存or新規作成）
+def save_entry(user_id, entry_date, morning=None, evening=None, image_data=None):
+    spreadsheet = init_gspread()
+    worksheet = spreadsheet.worksheet("entries")
+    
+    # 既存エントリーを検索
+    all_data = worksheet.get_all_values()
+    entry_id = None
+    entry_row = None
+    
+    for i, row in enumerate(all_data[1:], start=2):  # ヘッダーをスキップ
+        if len(row) >= 3 and row[1] == user_id and row[2] == entry_date:
+            entry_id = row[0]
+            entry_row = i
+            break
     
     now = datetime.now().isoformat()
     
-    if existing:
-        entry_id = existing[0]
-        updates = []
-        params = []
-        
+    if entry_row:  # 既存エントリーを更新
         if morning:
-            updates.extend([
-                "morning_stamp_emoji = ?",
-                "morning_stamp_label = ?",
-                "morning_message = ?"
-            ])
-            params.extend([
-                morning['stamp']['emoji'],
-                morning['stamp']['label'],
-                morning.get('message', '')
-            ])
+            worksheet.update_cell(entry_row, 4, morning['stamp']['emoji'])
+            worksheet.update_cell(entry_row, 5, morning['stamp']['label'])
+            worksheet.update_cell(entry_row, 6, morning.get('message', ''))
         
         if evening:
-            reactions_json = json.dumps(evening.get('reactions', []))
-            updates.extend([
-                "evening_stamp_emoji = ?",
-                "evening_stamp_label = ?",
-                "evening_diary_text = ?",
-                "evening_reactions = ?",
-                "evening_reaction_msg = ?"
-            ])
-            params.extend([
-                evening['stamp']['emoji'],
-                evening['stamp']['label'],
-                evening['diary_text'],
-                reactions_json,
-                evening.get('reaction_msg', '')
-            ])
+            worksheet.update_cell(entry_row, 7, evening['stamp']['emoji'])
+            worksheet.update_cell(entry_row, 8, evening['stamp']['label'])
+            worksheet.update_cell(entry_row, 9, evening['diary_text'])
         
-        updates.append("updated_at = ?")
-        params.append(now)
-        params.append(entry_id)
+        if image_data:
+            worksheet.update_cell(entry_row, 10, image_data)
         
-        query = f"UPDATE entries SET {', '.join(updates)} WHERE id = ?"
-        cursor.execute(query, params)
-    else:
+        worksheet.update_cell(entry_row, 13, now)  # updated_at
+    else:  # 新規エントリー
         entry_id = str(uuid.uuid4())
-        
-        cursor.execute("""
-            INSERT INTO entries (
-                id, user_id, entry_date,
-                morning_stamp_emoji, morning_stamp_label, morning_message,
-                evening_stamp_emoji, evening_stamp_label, evening_diary_text,
-                evening_reactions, evening_reaction_msg,
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            entry_id, user_id, entry_date,
-            morning['stamp']['emoji'] if morning else None,
-            morning['stamp']['label'] if morning else None,
-            morning.get('message', '') if morning else None,
-            evening['stamp']['emoji'] if evening else None,
-            evening['stamp']['label'] if evening else None,
-            evening['diary_text'] if evening else None,
-            json.dumps(evening.get('reactions', [])) if evening else None,
-            evening.get('reaction_msg', '') if evening else None,
-            now, now
-        ))
+        new_row = [
+            entry_id,
+            user_id,
+            entry_date,
+            morning['stamp']['emoji'] if morning else '',
+            morning['stamp']['label'] if morning else '',
+            morning.get('message', '') if morning else '',
+            evening['stamp']['emoji'] if evening else '',
+            evening['stamp']['label'] if evening else '',
+            evening['diary_text'] if evening else '',
+            image_data if image_data else '',
+            0,  # is_favorite
+            now,  # created_at
+            now   # updated_at
+        ]
+        worksheet.append_row(new_row)
     
-    conn.commit()
-    conn.close()
+    return entry_id
+
+# 朝の投稿を削除
+def delete_morning_entry(entry_id):
+    spreadsheet = init_gspread()
+    worksheet = spreadsheet.worksheet("entries")
+    
+    cell = worksheet.find(entry_id)
+    if cell:
+        row = cell.row
+        evening_stamp = worksheet.cell(row, 7).value
+        
+        if evening_stamp:  # 夜の投稿がある場合は朝のデータだけクリア
+            worksheet.update_cell(row, 4, '')  # morning_stamp_emoji
+            worksheet.update_cell(row, 5, '')  # morning_stamp_label
+            worksheet.update_cell(row, 6, '')  # morning_message
+            worksheet.update_cell(row, 13, datetime.now().isoformat())  # updated_at
+        else:  # 夜の投稿もない場合はエントリー全体を削除
+            worksheet.delete_rows(row)
+            # コメントも削除
+            comments_ws = spreadsheet.worksheet("comments")
+            cells = comments_ws.findall(entry_id)
+            for cell in reversed(cells):
+                if comments_ws.cell(cell.row, 2).value == entry_id:
+                    comments_ws.delete_rows(cell.row)
+
+# 夜の投稿を削除
+def delete_evening_entry(entry_id):
+    spreadsheet = init_gspread()
+    worksheet = spreadsheet.worksheet("entries")
+    
+    cell = worksheet.find(entry_id)
+    if cell:
+        row = cell.row
+        morning_stamp = worksheet.cell(row, 4).value
+        
+        if morning_stamp:  # 朝の投稿がある場合は夜のデータだけクリア
+            worksheet.update_cell(row, 7, '')  # evening_stamp_emoji
+            worksheet.update_cell(row, 8, '')  # evening_stamp_label
+            worksheet.update_cell(row, 9, '')  # evening_diary_text
+            worksheet.update_cell(row, 10, '')  # image_data
+            worksheet.update_cell(row, 13, datetime.now().isoformat())  # updated_at
+        else:  # 朝の投稿もない場合はエントリー全体を削除
+            worksheet.delete_rows(row)
+            # コメントも削除
+            comments_ws = spreadsheet.worksheet("comments")
+            cells = comments_ws.findall(entry_id)
+            for cell in reversed(cells):
+                if comments_ws.cell(cell.row, 2).value == entry_id:
+                    comments_ws.delete_rows(cell.row)
+
+# データベースをリセット
+def reset_database():
+    spreadsheet = init_gspread()
+    
+    # entriesシートをクリア（ヘッダーは残す）
+    entries_ws = spreadsheet.worksheet("entries")
+    entries_ws.resize(rows=1)
+    entries_ws.resize(rows=1000)
+    
+    # commentsシートをクリア
+    comments_ws = spreadsheet.worksheet("comments")
+    comments_ws.resize(rows=1)
+    comments_ws.resize(rows=1000)
 
 # 初期化
 if 'initialized' not in st.session_state:
@@ -209,12 +487,18 @@ if 'initialized' not in st.session_state:
     st.session_state.initialized = True
     st.session_state.current_user = None
     st.session_state.tab = "home"
+    st.session_state.screen = "main"
+    st.session_state.cal_month = date.today()
 
-# 設定とデータの読み込み
-settings = load_settings()
-entries = load_entries()
+try:
+    settings = load_settings()
+    entries = load_entries()
+except Exception as e:
+    st.error(f"データ読み込みエラー: {e}")
+    st.info("Googleスプレッドシートの設定を確認してください")
+    st.stop()
 
-# ユーザー選択
+# ユーザー選択画面
 if st.session_state.current_user is None:
     st.markdown("<h1 style='text-align: center; font-size: 52px !important;'>📔</h1>", unsafe_allow_html=True)
     st.markdown("<h1 style='text-align: center;'>ふたりの日記</h1>", unsafe_allow_html=True)
@@ -238,20 +522,270 @@ partner_key = "user_b" if st.session_state.current_user == "A" else "user_a"
 me = {"id": st.session_state.current_user, "name": settings[f"{user_key}_name"], "avatar": settings[f"{user_key}_avatar"]}
 partner = {"id": "A" if st.session_state.current_user == "B" else "B", "name": settings[f"{partner_key}_name"], "avatar": settings[f"{partner_key}_avatar"]}
 
+# 未読コメント数
+unread_count = get_unread_comments_count(st.session_state.current_user, entries)
+
+# ============================================
+# 朝の投稿画面
+# ============================================
+if st.session_state.get('screen') == 'post_morning':
+    st.markdown("""
+    <div style='background: linear-gradient(135deg, #f472b6, #ec4899); padding: 14px 18px; border-radius: 10px; margin: 0 0 10px;'>
+        <div style='color: white; font-weight: 800; font-size: 16px;'>☀️ 朝の体調報告</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    st.markdown("### スタンプを選択")
+    
+    cols = st.columns(4)
+    for i, stamp in enumerate(CONDITION_STAMPS):
+        with cols[i]:
+            if st.button(f"{stamp['emoji']}\n{stamp['label']}", key=f"morning_{i}", use_container_width=True):
+                st.session_state.selected_morning_stamp = stamp
+    
+    if 'selected_morning_stamp' in st.session_state:
+        st.success(f"選択中: {st.session_state.selected_morning_stamp['emoji']} {st.session_state.selected_morning_stamp['label']}")
+        message = st.text_input(f"💬 {partner['name']}へひとこと(任意)", max_chars=60, key="morning_msg")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("投稿する", type="primary", use_container_width=True):
+                morning_data = {"stamp": st.session_state.selected_morning_stamp, "message": message}
+                save_entry(st.session_state.current_user, date.today().isoformat(), morning=morning_data)
+                st.success("朝の投稿を保存しました!")
+                del st.session_state.selected_morning_stamp
+                st.session_state.screen = 'main'
+                st.rerun()
+        with col2:
+            if st.button("キャンセル", use_container_width=True):
+                if 'selected_morning_stamp' in st.session_state:
+                    del st.session_state.selected_morning_stamp
+                st.session_state.screen = 'main'
+                st.rerun()
+    st.stop()
+
+# ============================================
+# 夜の投稿画面
+# ============================================
+elif st.session_state.get('screen') == 'post_evening':
+    st.markdown("""
+    <div style='background: linear-gradient(135deg, #f472b6, #ec4899); padding: 14px 18px; border-radius: 10px; margin: 0 0 10px;'>
+        <div style='color: white; font-weight: 800; font-size: 16px;'>🌙 今日の日記</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    st.markdown("### 今日の気分")
+    
+    cols = st.columns(4)
+    for i, stamp in enumerate(MOOD_STAMPS):
+        with cols[i % 4]:
+            if st.button(f"{stamp['emoji']}\n{stamp['label']}", key=f"evening_{i}", use_container_width=True):
+                st.session_state.selected_evening_stamp = stamp
+    
+    if 'selected_evening_stamp' in st.session_state:
+        st.success(f"選択中: {st.session_state.selected_evening_stamp['emoji']} {st.session_state.selected_evening_stamp['label']}")
+        
+        st.markdown("### 今日の出来事")
+        diary_text = st.text_area("日記を書く", height=150, max_chars=500, key="diary_text", placeholder="今日はどんな日だった?")
+        
+        # 画像アップロード
+        uploaded_file = st.file_uploader("📷 写真を追加（任意）", type=["jpg", "jpeg", "png"], key="photo")
+        image_data = None
+        if uploaded_file:
+            image = Image.open(uploaded_file)
+            image.thumbnail((800, 800))
+            buffered = BytesIO()
+            image.save(buffered, format="JPEG")
+            image_data = base64.b64encode(buffered.getvalue()).decode()
+            st.image(image, use_container_width=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("投稿する", type="primary", use_container_width=True):
+                if diary_text.strip():
+                    evening_data = {"stamp": st.session_state.selected_evening_stamp, "diary_text": diary_text}
+                    save_entry(st.session_state.current_user, date.today().isoformat(), evening=evening_data, image_data=image_data)
+                    st.success("夜の日記を保存しました!")
+                    del st.session_state.selected_evening_stamp
+                    st.session_state.screen = 'main'
+                    st.rerun()
+                else:
+                    st.warning("日記を書いてください")
+        with col2:
+            if st.button("キャンセル", use_container_width=True):
+                if 'selected_evening_stamp' in st.session_state:
+                    del st.session_state.selected_evening_stamp
+                st.session_state.screen = 'main'
+                st.rerun()
+    st.stop()
+
+# ============================================
+# 朝の編集画面
+# ============================================
+elif st.session_state.get('screen') == 'edit_morning':
+    st.markdown("""
+    <div style='background: linear-gradient(135deg, #f472b6, #ec4899); padding: 14px 18px; border-radius: 10px; margin: 0 0 10px;'>
+        <div style='color: white; font-weight: 800; font-size: 16px;'>✏️ 朝の体調を編集</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    entry_id = st.session_state.get('edit_entry_id')
+    current_entry = entries[entries['id'] == entry_id].iloc[0]
+    
+    st.markdown("### スタンプを選択")
+    cols = st.columns(4)
+    for i, stamp in enumerate(CONDITION_STAMPS):
+        with cols[i]:
+            if st.button(f"{stamp['emoji']}\n{stamp['label']}", key=f"edit_morning_{i}", use_container_width=True):
+                st.session_state.selected_morning_stamp = stamp
+    
+    if 'selected_morning_stamp' not in st.session_state and pd.notna(current_entry['morning_stamp_emoji']):
+        for stamp in CONDITION_STAMPS:
+            if stamp['emoji'] == current_entry['morning_stamp_emoji']:
+                st.session_state.selected_morning_stamp = stamp
+                break
+    
+    if 'selected_morning_stamp' in st.session_state:
+        st.success(f"選択中: {st.session_state.selected_morning_stamp['emoji']} {st.session_state.selected_morning_stamp['label']}")
+        
+        default_msg = str(current_entry['morning_message']) if pd.notna(current_entry['morning_message']) else ""
+        message = st.text_input(f"💬 {partner['name']}へひとこと(任意)", max_chars=60, key="edit_morning_msg", value=default_msg)
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("更新する", type="primary", use_container_width=True):
+                morning_data = {"stamp": st.session_state.selected_morning_stamp, "message": message}
+                save_entry(st.session_state.current_user, str(current_entry['entry_date']), morning=morning_data)
+                st.success("朝の投稿を更新しました!")
+                del st.session_state.selected_morning_stamp
+                del st.session_state.edit_entry_id
+                st.session_state.screen = 'main'
+                st.rerun()
+        with col2:
+            if st.button("削除する", use_container_width=True):
+                delete_morning_entry(entry_id)
+                st.success("朝の投稿を削除しました!")
+                if 'selected_morning_stamp' in st.session_state:
+                    del st.session_state.selected_morning_stamp
+                if 'edit_entry_id' in st.session_state:
+                    del st.session_state.edit_entry_id
+                st.session_state.screen = 'main'
+                st.rerun()
+        with col3:
+            if st.button("キャンセル", use_container_width=True):
+                if 'selected_morning_stamp' in st.session_state:
+                    del st.session_state.selected_morning_stamp
+                if 'edit_entry_id' in st.session_state:
+                    del st.session_state.edit_entry_id
+                st.session_state.screen = 'main'
+                st.rerun()
+    st.stop()
+
+# ============================================
+# 夜の編集画面
+# ============================================
+elif st.session_state.get('screen') == 'edit_evening':
+    st.markdown("""
+    <div style='background: linear-gradient(135deg, #f472b6, #ec4899); padding: 14px 18px; border-radius: 10px; margin: 0 0 10px;'>
+        <div style='color: white; font-weight: 800; font-size: 16px;'>✏️ 夜の日記を編集</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    entry_id = st.session_state.get('edit_entry_id')
+    current_entry = entries[entries['id'] == entry_id].iloc[0]
+    
+    st.markdown("### 今日の気分")
+    cols = st.columns(4)
+    for i, stamp in enumerate(MOOD_STAMPS):
+        with cols[i % 4]:
+            if st.button(f"{stamp['emoji']}\n{stamp['label']}", key=f"edit_evening_{i}", use_container_width=True):
+                st.session_state.selected_evening_stamp = stamp
+    
+    if 'selected_evening_stamp' not in st.session_state and pd.notna(current_entry['evening_stamp_emoji']):
+        for stamp in MOOD_STAMPS:
+            if stamp['emoji'] == current_entry['evening_stamp_emoji']:
+                st.session_state.selected_evening_stamp = stamp
+                break
+    
+    if 'selected_evening_stamp' in st.session_state:
+        st.success(f"選択中: {st.session_state.selected_evening_stamp['emoji']} {st.session_state.selected_evening_stamp['label']}")
+        
+        default_diary = str(current_entry['evening_diary_text']) if pd.notna(current_entry['evening_diary_text']) else ""
+        diary_text = st.text_area("日記を書く", height=150, max_chars=500, key="edit_diary_text", value=default_diary)
+        
+        if pd.notna(current_entry.get('image_data')) and current_entry.get('image_data'):
+            st.markdown("**現在の写真:**")
+            st.image(f"data:image/jpeg;base64,{current_entry['image_data']}", use_container_width=True)
+        
+        uploaded_file = st.file_uploader("📷 写真を変更（任意）", type=["jpg", "jpeg", "png"], key="edit_photo")
+        image_data = None
+        if uploaded_file:
+            image = Image.open(uploaded_file)
+            image.thumbnail((800, 800))
+            buffered = BytesIO()
+            image.save(buffered, format="JPEG")
+            image_data = base64.b64encode(buffered.getvalue()).decode()
+            st.image(image, use_container_width=True)
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("更新する", type="primary", use_container_width=True):
+                if diary_text.strip():
+                    evening_data = {"stamp": st.session_state.selected_evening_stamp, "diary_text": diary_text}
+                    save_entry(st.session_state.current_user, str(current_entry['entry_date']), evening=evening_data, image_data=image_data)
+                    st.success("夜の日記を更新しました!")
+                    del st.session_state.selected_evening_stamp
+                    del st.session_state.edit_entry_id
+                    st.session_state.screen = 'main'
+                    st.rerun()
+                else:
+                    st.warning("日記を書いてください")
+        with col2:
+            if st.button("削除する", use_container_width=True):
+                delete_evening_entry(entry_id)
+                st.success("夜の日記を削除しました!")
+                if 'selected_evening_stamp' in st.session_state:
+                    del st.session_state.selected_evening_stamp
+                if 'edit_entry_id' in st.session_state:
+                    del st.session_state.edit_entry_id
+                st.session_state.screen = 'main'
+                st.rerun()
+        with col3:
+            if st.button("キャンセル", use_container_width=True):
+                if 'selected_evening_stamp' in st.session_state:
+                    del st.session_state.selected_evening_stamp
+                if 'edit_entry_id' in st.session_state:
+                    del st.session_state.edit_entry_id
+                st.session_state.screen = 'main'
+                st.rerun()
+    st.stop()
+
+# ============================================
+# メイン画面（通常のタブ表示）
+# ============================================
+
 # ヘッダー
+badge_html = f"<span class='badge'>{unread_count}</span>" if unread_count > 0 else ""
 st.markdown(f"""
-<div style='background: linear-gradient(135deg, #f472b6, #ec4899); padding: 14px 18px; border-radius: 10px; margin-bottom: 10px;'>
-    <div style='display: flex; align-items: center; gap: 10px;'>
-        <div style='font-size: 36px;'>{me['avatar']}</div>
-        <div>
-            <div style='color: white; font-weight: 800; font-size: 16px;'>📔 ふたりの日記</div>
-            <div style='color: rgba(255,255,255,0.8); font-size: 10px;'>{me['name']} と {partner['name']}</div>
+<div class='header-container'>
+    <div class='header-flex'>
+        <div class='header-avatar'>{me['avatar']}</div>
+        <div class='header-text'>
+            <div class='header-title'>📔 ふたりの日記</div>
+            <div class='header-subtitle'>{me['name']} と {partner['name']}</div>
         </div>
+        {badge_html}
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# タブ
+# タブナビゲーション
 tab_col1, tab_col2, tab_col3, tab_col4 = st.columns(4)
 with tab_col1:
     if st.button("🏠 ホーム"):
@@ -272,237 +806,381 @@ with tab_col4:
 
 st.markdown("---")
 
+# ============================================
 # ホームタブ
+# ============================================
 if st.session_state.tab == "home":
     today_str = date.today().isoformat()
     
-    # 統計
-    if settings.get('anniversary'):
-        try:
-            anniv_date = datetime.strptime(settings['anniversary'], "%Y-%m-%d").date()
-            days_since = (date.today() - anniv_date).days + 1
-            st.markdown(f"""
-            <div class='stat-box' style='margin-bottom: 12px;'>
-                <div style='font-size: 22px;'>💑</div>
-                <div style='font-size: 22px; font-weight: 800; color: #ec4899;'>{days_since}</div>
-                <div style='font-size: 10px; color: #888;'>日目</div>
-            </div>
-            """, unsafe_allow_html=True)
-        except:
-            pass
+    # 統計表示
+    col1, col2 = st.columns(2)
     
-    # 今日のエントリー
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown(f"### 📅 今日 — {me['avatar']} {me['name']}")
+    with col1:
+        if settings.get('anniversary'):
+            try:
+                anniv_date = datetime.strptime(settings['anniversary'], "%Y-%m-%d").date()
+                days_since = (date.today() - anniv_date).days + 1
+                st.markdown(f"""
+                <div class='stat-box'>
+                    <div style='font-size: 22px;'>💑</div>
+                    <div style='font-size: 22px; font-weight: 800; color: #ec4899;'>{days_since}</div>
+                    <div style='font-size: 10px; color: #888;'>日目</div>
+                </div>
+                """, unsafe_allow_html=True)
+            except:
+                pass
     
-    today_entries = entries[entries['entry_date'] == today_str] if not entries.empty else pd.DataFrame()
-    my_today = today_entries[today_entries['user_id'] == st.session_state.current_user]
-    
-    has_morning = not my_today.empty and pd.notna(my_today.iloc[0]['morning_stamp_emoji']) if not my_today.empty else False
-    has_evening = not my_today.empty and pd.notna(my_today.iloc[0]['evening_stamp_emoji']) if not my_today.empty else False
-    
-    if not my_today.empty and has_morning:
-        entry = my_today.iloc[0]
+    with col2:
+        streak = calculate_streak(entries)
         st.markdown(f"""
-        <div style='background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 14px; padding: 12px; margin: 8px 0;'>
-            <div style='font-size: 11px; font-weight: 700; color: #b45309; margin-bottom: 6px;'>☀️ 朝の体調</div>
-            <div style='font-size: 26px;'>{entry['morning_stamp_emoji']} {entry['morning_stamp_label']}</div>
-            {f"<div style='background: #fef9c3; border-radius: 10px; padding: 7px 10px; margin-top: 8px; font-size: 13px; color: #78350f;'>💬 {entry['morning_message']}</div>" if entry['morning_message'] else ""}
+        <div class='stat-box'>
+            <div style='font-size: 22px;'>🔥</div>
+            <div style='font-size: 22px; font-weight: 800; color: #ec4899;'>{streak}</div>
+            <div style='font-size: 10px; color: #888;'>日連続</div>
         </div>
         """, unsafe_allow_html=True)
     
-    if not my_today.empty and has_evening:
-        entry = my_today.iloc[0]
-        st.markdown(f"""
-        <div style='background: #f5f3ff; border: 1.5px solid #ddd6fe; border-radius: 14px; padding: 12px; margin: 8px 0;'>
-            <div style='font-size: 11px; font-weight: 700; color: #ec4899; margin-bottom: 6px;'>🌙 夜の日記</div>
-            <div style='font-size: 26px;'>{entry['evening_stamp_emoji']} {entry['evening_stamp_label']}</div>
-            <div style='font-size: 14px; color: #333; margin-top: 8px;'>{entry['evening_diary_text']}</div>
-        </div>
-        """, unsafe_allow_html=True)
+    # 2カラムレイアウト
+    col_me, col_partner = st.columns(2)
     
-    if my_today.empty or not has_morning:
-        st.info("まだ投稿していません")
-    
-    # アクションボタン
-    if not has_morning:
-        if st.button("☀️ 朝の体調を投稿", use_container_width=True, type="primary"):
-            st.session_state.modal = "morning"
-            st.rerun()
-    
-    if has_morning and not has_evening:
-        if st.button("🌙 夜の日記を投稿", use_container_width=True, type="primary"):
-            st.session_state.modal = "evening"
-            st.rerun()
-    
-    if has_morning and has_evening:
-        st.success("✅ 今日はすべて投稿済み!")
-    
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    # パートナーの今日
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown(f"### 📅 今日 — {partner['avatar']} {partner['name']}")
-    
-    partner_today = today_entries[today_entries['user_id'] == partner['id']]
-    
-    if not partner_today.empty:
-        entry = partner_today.iloc[0]
-        if pd.notna(entry['morning_stamp_emoji']):
-            st.markdown(f"""
-            <div style='background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 14px; padding: 12px; margin: 8px 0;'>
-                <div style='font-size: 11px; font-weight: 700; color: #b45309; margin-bottom: 6px;'>☀️ 朝の体調</div>
-                <div style='font-size: 26px;'>{entry['morning_stamp_emoji']} {entry['morning_stamp_label']}</div>
-                {f"<div style='background: #fef9c3; border-radius: 10px; padding: 7px 10px; margin-top: 8px; font-size: 13px; color: #78350f;'>💬 {entry['morning_message']}</div>" if entry['morning_message'] else ""}
-            </div>
-            """, unsafe_allow_html=True)
+    # 自分の今日のエントリー
+    with col_me:
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.markdown(f"### 📅 今日 — {me['avatar']} {me['name']}")
         
-        if pd.notna(entry['evening_stamp_emoji']):
-            st.markdown(f"""
-            <div style='background: #f5f3ff; border: 1.5px solid #ddd6fe; border-radius: 14px; padding: 12px; margin: 8px 0;'>
-                <div style='font-size: 11px; font-weight: 700; color: #ec4899; margin-bottom: 6px;'>🌙 夜の日記</div>
-                <div style='font-size: 26px;'>{entry['evening_stamp_emoji']} {entry['evening_stamp_label']}</div>
-                <div style='font-size: 14px; color: #333; margin-top: 8px;'>{entry['evening_diary_text']}</div>
-            </div>
-            """, unsafe_allow_html=True)
-    else:
-        st.info(f"{partner['name']}はまだ投稿していません 🌿")
+        today_entries = entries[entries['entry_date'] == today_str] if not entries.empty else pd.DataFrame()
+        my_today = today_entries[today_entries['user_id'] == st.session_state.current_user] if not today_entries.empty else pd.DataFrame()
+        
+        has_morning = not my_today.empty and pd.notna(my_today.iloc[0]['morning_stamp_emoji']) if not my_today.empty else False
+        has_evening = not my_today.empty and pd.notna(my_today.iloc[0]['evening_stamp_emoji']) if not my_today.empty else False
+        
+        if has_morning:
+            entry = my_today.iloc[0]
+            st.markdown(f"**☀️ 朝:** {entry['morning_stamp_emoji']} {entry['morning_stamp_label']}")
+            if pd.notna(entry['morning_message']) and str(entry['morning_message']):
+                st.markdown(f"💬 {entry['morning_message']}")
+            if st.button("編集", key="edit_my_morning", use_container_width=True):
+                st.session_state.edit_entry_id = entry['id']
+                st.session_state.screen = 'edit_morning'
+                st.rerun()
+        else:
+            if st.button("☀️ 朝の投稿", use_container_width=True):
+                st.session_state.screen = 'post_morning'
+                st.rerun()
+        
+        st.markdown("---")
+        
+        if has_evening:
+            entry = my_today.iloc[0]
+            st.markdown(f"**🌙 夜:** {entry['evening_stamp_emoji']} {entry['evening_stamp_label']}")
+            st.markdown(entry['evening_diary_text'])
+            
+            if pd.notna(entry.get('image_data')) and str(entry.get('image_data')):
+                st.image(f"data:image/jpeg;base64,{entry['image_data']}", use_container_width=True)
+            
+            if st.button("編集", key="edit_my_evening", use_container_width=True):
+                st.session_state.edit_entry_id = entry['id']
+                st.session_state.screen = 'edit_evening'
+                st.rerun()
+        else:
+            if st.button("🌙 夜の投稿", use_container_width=True):
+                st.session_state.screen = 'post_evening'
+                st.rerun()
+        
+        st.markdown("</div>", unsafe_allow_html=True)
     
-    st.markdown("</div>", unsafe_allow_html=True)
+    # パートナーの今日のエントリー
+    with col_partner:
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.markdown(f"### 📅 今日 — {partner['avatar']} {partner['name']}")
+        
+        partner_today = today_entries[today_entries['user_id'] == partner['id']] if not today_entries.empty else pd.DataFrame()
+        
+        if not partner_today.empty:
+            entry = partner_today.iloc[0]
+            entry_id = entry['id']
+            
+            is_fav = int(entry.get('is_favorite', 0)) == 1
+            fav_label = "❤️ お気に入り解除" if is_fav else "🤍 お気に入りに追加"
+            if st.button(fav_label, key=f"fav_{entry_id}", use_container_width=True):
+                toggle_favorite(entry_id)
+                st.rerun()
+            
+            if pd.notna(entry['morning_stamp_emoji']):
+                st.markdown(f"**☀️ 朝:** {entry['morning_stamp_emoji']} {entry['morning_stamp_label']}")
+                if pd.notna(entry['morning_message']) and str(entry['morning_message']):
+                    st.markdown(f"💬 {entry['morning_message']}")
+            else:
+                st.info("まだ朝の投稿がありません 🌅")
+            
+            st.markdown("---")
+            
+            if pd.notna(entry['evening_stamp_emoji']):
+                st.markdown(f"**🌙 夜:** {entry['evening_stamp_emoji']} {entry['evening_stamp_label']}")
+                st.markdown(entry['evening_diary_text'])
+                
+                if pd.notna(entry.get('image_data')) and str(entry.get('image_data')):
+                    st.image(f"data:image/jpeg;base64,{entry['image_data']}", use_container_width=True)
+                
+                st.markdown("---")
+                st.markdown("**💬 コメント**")
+                comments = load_comments(entry_id)
+                if comments:
+                    for comment in comments:
+                        if len(comment) >= 5:
+                            comment_id, _, comment_user_id, comment_text, created_at = comment[0], comment[1], comment[2], comment[3], comment[4]
+                            comment_user = me if comment_user_id == st.session_state.current_user else partner
+                            
+                            st.markdown(f"""
+                            <div class='comment-box'>
+                                <div style='font-size: 11px; color: #888; margin-bottom: 4px;'>{comment_user['avatar']} {comment_user['name']} • {created_at[:10]}</div>
+                                <div style='font-size: 13px;'>{comment_text}</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            if comment_user_id == st.session_state.current_user:
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    if st.button("編集", key=f"edit_comment_{comment_id}", use_container_width=True):
+                                        st.session_state.edit_comment_id = comment_id
+                                        st.session_state.edit_comment_text = comment_text
+                                        st.rerun()
+                                with col2:
+                                    if st.button("削除", key=f"delete_comment_{comment_id}", use_container_width=True):
+                                        delete_comment(comment_id)
+                                        st.success("コメントを削除しました!")
+                                        st.rerun()
+                
+                if st.session_state.get('edit_comment_id'):
+                    st.markdown("---")
+                    st.markdown("**コメントを編集**")
+                    edit_text = st.text_input(
+                        "コメント", 
+                        value=st.session_state.get('edit_comment_text', ''),
+                        key="edit_comment_input",
+                        max_chars=200
+                    )
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("更新", key="update_comment", use_container_width=True):
+                            if edit_text.strip():
+                                update_comment(st.session_state.edit_comment_id, edit_text)
+                                del st.session_state.edit_comment_id
+                                del st.session_state.edit_comment_text
+                                st.success("コメントを更新しました!")
+                                st.rerun()
+                    with col2:
+                        if st.button("キャンセル", key="cancel_edit_comment", use_container_width=True):
+                            del st.session_state.edit_comment_id
+                            del st.session_state.edit_comment_text
+                            st.rerun()
+                else:
+                    st.markdown("---")
+                    
+                    counter_key = f"comment_counter_{entry_id}"
+                    if counter_key not in st.session_state:
+                        st.session_state[counter_key] = 0
+                    
+                    comment_text = st.text_input(
+                        f"💬 {partner['name']}にコメント", 
+                        key=f"comment_input_{entry_id}_{st.session_state[counter_key]}",
+                        max_chars=200, 
+                        placeholder="優しいコメントを残そう..."
+                    )
+                    
+                    if st.button("送信", key=f"send_{entry_id}", use_container_width=True):
+                        if comment_text.strip():
+                            add_comment(entry_id, st.session_state.current_user, comment_text)
+                            st.session_state[counter_key] += 1
+                            st.success("コメントを送信しました!")
+                            st.rerun()
+            else:
+                st.info("まだ夜の投稿がありません 🌙")
+        else:
+            st.info(f"{partner['name']}はまだ投稿していません 🌿")
+        
+        st.markdown("</div>", unsafe_allow_html=True)
 
+# ============================================
 # カレンダータブ
+# ============================================
 elif st.session_state.tab == "calendar":
     st.markdown("### 📅 カレンダー")
     
-    if not entries.empty:
-        # 日付ごとにグループ化
-        cal_data = entries.groupby('entry_date').size().reset_index(name='投稿数')
-        cal_data.columns = ['日付', '投稿数']
-        
-        st.dataframe(
-            cal_data,
-            hide_index=True,
-            use_container_width=True
-        )
-    else:
-        st.info("まだ日記がありません")
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col1:
+        if st.button("◀", key="prev_month"):
+            st.session_state.cal_month = st.session_state.cal_month.replace(day=1) - timedelta(days=1)
+            st.rerun()
+    with col2:
+        st.markdown(f"<div style='text-align: center; font-weight: 700; color: #ec4899; font-size: 16px;'>{st.session_state.cal_month.strftime('%Y年%m月')}</div>", unsafe_allow_html=True)
+    with col3:
+        if st.button("▶", key="next_month"):
+            st.session_state.cal_month = (st.session_state.cal_month.replace(day=28) + timedelta(days=4)).replace(day=1)
+            st.rerun()
+    
+    cal = calendar.monthcalendar(st.session_state.cal_month.year, st.session_state.cal_month.month)
+    
+    days_of_week = ["日", "月", "火", "水", "木", "金", "土"]
+    header_cols = st.columns(7)
+    for i, day in enumerate(days_of_week):
+        with header_cols[i]:
+            st.markdown(f"<div style='text-align: center; font-size: 12px; color: #999; font-weight: 700;'>{day}</div>", unsafe_allow_html=True)
+    
+    for week in cal:
+        week_cols = st.columns(7)
+        for i, day in enumerate(week):
+            with week_cols[i]:
+                if day == 0:
+                    st.markdown("<div style='min-height: 50px;'></div>", unsafe_allow_html=True)
+                else:
+                    day_date = date(st.session_state.cal_month.year, st.session_state.cal_month.month, day)
+                    day_str = day_date.isoformat()
+                    day_entries = entries[entries['entry_date'] == day_str] if not entries.empty else pd.DataFrame()
+                    
+                    is_today = day_date == date.today()
+                    has_entries = not day_entries.empty
+                    
+                    stamps = ""
+                    if has_entries:
+                        for _, entry in day_entries.iterrows():
+                            if pd.notna(entry['morning_stamp_emoji']):
+                                stamps += str(entry['morning_stamp_emoji'])
+                    
+                    bg_color = "#fce7f3" if has_entries else "#f9fafb"
+                    border_color = "#f472b6" if has_entries else "#ddd"
+                    border_width = "2px" if is_today else "1px"
+                    font_weight = "800" if is_today else "400"
+                    
+                    st.markdown(f"""
+                    <div style='
+                        background: {bg_color};
+                        border: {border_width} solid {border_color};
+                        border-radius: 12px;
+                        padding: 8px;
+                        text-align: center;
+                        min-height: 50px;
+                    '>
+                        <div style='font-weight: {font_weight}; font-size: 13px;'>{day}</div>
+                        <div style='font-size: 16px; margin-top: 2px;'>{stamps[:2]}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
+# ============================================
 # 履歴タブ
+# ============================================
 elif st.session_state.tab == "history":
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("### 📖 履歴")
     
+    search_query = st.text_input("🔍 検索", placeholder="日記を検索...", key="search")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        filter_user = st.selectbox("ユーザー", ["すべて", me['name'], partner['name']])
+    with col2:
+        filter_type = st.selectbox("種類", ["すべて", "お気に入りのみ"])
+    
     if not entries.empty:
-        for _, entry in entries.head(20).iterrows():
-            user = me if entry['user_id'] == st.session_state.current_user else partner
+        filtered_entries = entries.copy()
+        
+        if search_query:
+            filtered_entries = filtered_entries[
+                filtered_entries['evening_diary_text'].astype(str).str.contains(search_query, na=False, case=False) |
+                filtered_entries['morning_message'].astype(str).str.contains(search_query, na=False, case=False)
+            ]
+        
+        if filter_user != "すべて":
+            filter_user_id = me['id'] if filter_user == me['name'] else partner['id']
+            filtered_entries = filtered_entries[filtered_entries['user_id'] == filter_user_id]
+        
+        if filter_type == "お気に入りのみ":
+            filtered_entries = filtered_entries[filtered_entries['is_favorite'] == 1]
+        
+        if filtered_entries.empty:
+            st.info("該当する日記が見つかりませんでした")
+        else:
+            st.markdown(f"**{len(filtered_entries)}件の日記**")
             
-            with st.expander(f"{user['avatar']} {user['name']} - {entry['entry_date']}"):
-                if pd.notna(entry['morning_stamp_emoji']):
-                    st.markdown(f"**☀️ 朝の体調:** {entry['morning_stamp_emoji']} {entry['morning_stamp_label']}")
-                    if entry['morning_message']:
-                        st.markdown(f"💬 {entry['morning_message']}")
+            for _, entry in filtered_entries.head(30).iterrows():
+                user = me if entry['user_id'] == st.session_state.current_user else partner
+                is_fav = int(entry.get('is_favorite', 0)) == 1
+                fav_icon = " ❤️" if is_fav else ""
                 
-                if pd.notna(entry['evening_stamp_emoji']):
-                    st.markdown(f"**🌙 夜の日記:** {entry['evening_stamp_emoji']} {entry['evening_stamp_label']}")
-                    st.markdown(entry['evening_diary_text'])
+                comments_count = len(load_comments(entry['id']))
+                comment_badge = f" 💬 {comments_count}" if comments_count > 0 else ""
+                
+                with st.expander(f"{user['avatar']} {user['name']} - {entry['entry_date']}{fav_icon}{comment_badge}"):
+                    if pd.notna(entry['morning_stamp_emoji']):
+                        st.markdown(f"**☀️ 朝:** {entry['morning_stamp_emoji']} {entry['morning_stamp_label']}")
+                        if pd.notna(entry['morning_message']) and str(entry['morning_message']):
+                            st.markdown(f"💬 {entry['morning_message']}")
+                    
+                    if pd.notna(entry['evening_stamp_emoji']):
+                        st.markdown(f"**🌙 夜:** {entry['evening_stamp_emoji']} {entry['evening_stamp_label']}")
+                        st.markdown(entry['evening_diary_text'])
+                        
+                        if pd.notna(entry.get('image_data')) and str(entry.get('image_data')):
+                            st.image(f"data:image/jpeg;base64,{entry['image_data']}", use_container_width=True)
     else:
         st.info("まだ日記がありません")
+    
+    st.markdown("</div>", unsafe_allow_html=True)
 
+# ============================================
 # 設定タブ
+# ============================================
 elif st.session_state.tab == "settings":
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("### 📊 統計")
+    
+    stats = get_statistics(entries)
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("総投稿数", stats['total_entries'])
+    with col2:
+        st.metric("今月の投稿", stats['this_month'])
+    with col3:
+        st.metric("連続投稿", f"{stats['streak']}日")
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("### ⚙️ 設定")
     
     with st.form("settings_form"):
-        st.markdown("**👤 名前・アバター**")
+        user_a_name = st.text_input("ユーザーA の名前", value=settings['user_a_name'])
+        user_a_avatar = st.text_input("ユーザーA のアバター", value=settings['user_a_avatar'])
+        user_b_name = st.text_input("ユーザーB の名前", value=settings['user_b_name'])
+        user_b_avatar = st.text_input("ユーザーB のアバター", value=settings['user_b_avatar'])
         
-        col1, col2 = st.columns(2)
-        with col1:
-            new_a_avatar = st.selectbox(f"{settings['user_a_name']} アバター", AVATARS, index=AVATARS.index(settings['user_a_avatar']) if settings['user_a_avatar'] in AVATARS else 0)
-            new_a_name = st.text_input(f"{settings['user_a_name']} 名前", value=settings['user_a_name'])
+        anniversary = st.date_input("記念日", value=datetime.strptime(settings['anniversary'], "%Y-%m-%d").date() if settings.get('anniversary') else None)
         
-        with col2:
-            new_b_avatar = st.selectbox(f"{settings['user_b_name']} アバター", AVATARS, index=AVATARS.index(settings['user_b_avatar']) if settings['user_b_avatar'] in AVATARS else 1)
-            new_b_name = st.text_input(f"{settings['user_b_name']} 名前", value=settings['user_b_name'])
-        
-        st.markdown("**💑 記念日**")
-        new_anniversary = st.date_input("記念日", value=datetime.strptime(settings['anniversary'], "%Y-%m-%d").date() if settings.get('anniversary') else None)
-        
-        if st.form_submit_button("保存する", use_container_width=True, type="primary"):
+        if st.form_submit_button("保存", use_container_width=True):
             new_settings = {
-                "user_a_name": new_a_name,
-                "user_a_avatar": new_a_avatar,
-                "user_b_name": new_b_name,
-                "user_b_avatar": new_b_avatar,
-                "anniversary": new_anniversary.isoformat() if new_anniversary else "",
+                "user_a_name": user_a_name,
+                "user_a_avatar": user_a_avatar,
+                "user_b_name": user_b_name,
+                "user_b_avatar": user_b_avatar,
+                "anniversary": anniversary.isoformat() if anniversary else ""
             }
-            
             save_settings(new_settings)
             st.success("設定を保存しました!")
             st.rerun()
     
-    if st.button("ユーザーを切り替える"):
+    st.markdown("---")
+    
+    if st.button("ユーザーを切り替える", use_container_width=True):
         st.session_state.current_user = None
         st.rerun()
-
-# モーダル処理（朝・夜の投稿）
-if 'modal' in st.session_state and st.session_state.modal == "morning":
+    
     st.markdown("---")
-    st.markdown("### ☀️ 朝の体調報告")
-    st.markdown(f"今日の体調・気分は? → {partner['name']}に伝えよう")
     
-    cols = st.columns(3)
-    for i, stamp in enumerate(CONDITION_STAMPS):
-        with cols[i % 3]:
-            if st.button(f"{stamp['emoji']}\n{stamp['label']}", key=f"morning_{i}", use_container_width=True):
-                st.session_state.selected_morning_stamp = stamp
+    st.warning("⚠️ 危険: すべての投稿とコメントが削除されます")
+    if st.button("履歴をリセット", use_container_width=True, type="secondary"):
+        reset_database()
+        st.success("履歴をリセットしました!")
+        st.rerun()
     
-    if 'selected_morning_stamp' in st.session_state:
-        st.success(f"選択中: {st.session_state.selected_morning_stamp['emoji']} {st.session_state.selected_morning_stamp['label']}")
-        message = st.text_input(f"💬 {partner['name']}へひとこと(任意)", max_chars=60, key="morning_msg")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("投稿する", type="primary", use_container_width=True):
-                morning_data = {"stamp": st.session_state.selected_morning_stamp, "message": message}
-                save_entry(st.session_state.current_user, date.today().isoformat(), morning=morning_data)
-                st.success("朝の投稿を保存しました!")
-                del st.session_state.modal
-                del st.session_state.selected_morning_stamp
-                st.rerun()
-        with col2:
-            if st.button("キャンセル", use_container_width=True):
-                del st.session_state.modal
-                if 'selected_morning_stamp' in st.session_state:
-                    del st.session_state.selected_morning_stamp
-                st.rerun()
-
-elif 'modal' in st.session_state and st.session_state.modal == "evening":
-    st.markdown("---")
-    st.markdown("### 🌙 夜の日記")
-    st.markdown("今日はどんな一日だった?")
-    
-    cols = st.columns(3)
-    for i, stamp in enumerate(DIARY_STAMPS):
-        with cols[i % 3]:
-            if st.button(f"{stamp['emoji']}\n{stamp['label']}", key=f"evening_{i}", use_container_width=True):
-                st.session_state.selected_evening_stamp = stamp
-    
-    if 'selected_evening_stamp' in st.session_state:
-        st.success(f"選択中: {st.session_state.selected_evening_stamp['emoji']} {st.session_state.selected_evening_stamp['label']}")
-        diary_text = st.text_area("今日のひとこと", max_chars=140, height=100, key="evening_diary")
-        reaction_msg = st.text_input(f"💌 {partner['name']}へひとこと(任意)", max_chars=60, key="evening_reaction")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("投稿する", type="primary", use_container_width=True, disabled=not diary_text.strip()):
-                evening_data = {"stamp": st.session_state.selected_evening_stamp, "diary_text": diary_text, "reaction_msg": reaction_msg}
-                save_entry(st.session_state.current_user, date.today().isoformat(), evening=evening_data)
-                st.success("夜の投稿を保存しました!")
-                del st.session_state.modal
-                del st.session_state.selected_evening_stamp
-                st.rerun()
-        with col2:
-            if st.button("キャンセル", use_container_width=True):
-                del st.session_state.modal
-                if 'selected_evening_stamp' in st.session_state:
-                    del st.session_state.selected_evening_stamp
-                st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
