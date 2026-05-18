@@ -226,6 +226,7 @@ def init_database():
             settings_ws.append_row(setting)
 
 # 設定を読み込む
+@st.cache_data(ttl=300)  # 5分間キャッシュ
 def load_settings():
     spreadsheet = init_gspread()
     worksheet = spreadsheet.worksheet("settings")
@@ -244,8 +245,10 @@ def save_settings(settings):
             worksheet.update_cell(cell.row, 2, value)
         else:
             worksheet.append_row([key, value])
+    st.cache_data.clear()  # キャッシュをクリア
 
 # エントリーを読み込む
+@st.cache_data(ttl=60)  # 60秒間キャッシュ
 def load_entries():
     spreadsheet = init_gspread()
     worksheet = spreadsheet.worksheet("entries")
@@ -287,6 +290,7 @@ def add_comment(entry_id, user_id, comment_text):
     comment_id = str(uuid.uuid4())
     created_at = datetime.now().isoformat()
     worksheet.append_row([comment_id, entry_id, user_id, comment_text, created_at])
+    st.cache_data.clear()  # キャッシュをクリア
 
 # コメントを更新
 def update_comment(comment_id, new_text):
@@ -296,6 +300,7 @@ def update_comment(comment_id, new_text):
     cell = worksheet.find(comment_id)
     if cell:
         worksheet.update_cell(cell.row, 4, new_text)  # comment_textは4列目
+    st.cache_data.clear()  # キャッシュをクリア
 
 # コメントを削除
 def delete_comment(comment_id):
@@ -305,6 +310,7 @@ def delete_comment(comment_id):
     cell = worksheet.find(comment_id)
     if cell:
         worksheet.delete_rows(cell.row)
+    st.cache_data.clear()  # キャッシュをクリア
 
 # お気に入りトグル
 def toggle_favorite(entry_id):
@@ -316,6 +322,7 @@ def toggle_favorite(entry_id):
         current = worksheet.cell(cell.row, 11).value  # is_favoriteは11列目
         new_value = 0 if str(current) == "1" else 1
         worksheet.update_cell(cell.row, 11, new_value)
+    st.cache_data.clear()  # キャッシュをクリア
 
 # 連続投稿日数を計算
 def calculate_streak(entries):
@@ -416,6 +423,7 @@ def save_entry(user_id, entry_date, morning=None, evening=None, image_data=None)
         ]
         worksheet.append_row(new_row)
     
+    st.cache_data.clear()  # キャッシュをクリアして最新データを取得
     return entry_id
 
 # 朝の投稿を削除
@@ -441,6 +449,7 @@ def delete_morning_entry(entry_id):
             for cell in reversed(cells):
                 if comments_ws.cell(cell.row, 2).value == entry_id:
                     comments_ws.delete_rows(cell.row)
+    st.cache_data.clear()  # キャッシュをクリア
 
 # 夜の投稿を削除
 def delete_evening_entry(entry_id):
@@ -466,6 +475,7 @@ def delete_evening_entry(entry_id):
             for cell in reversed(cells):
                 if comments_ws.cell(cell.row, 2).value == entry_id:
                     comments_ws.delete_rows(cell.row)
+    st.cache_data.clear()  # キャッシュをクリア
 
 # データベースをリセット
 def reset_database():
@@ -480,6 +490,8 @@ def reset_database():
     comments_ws = spreadsheet.worksheet("comments")
     comments_ws.resize(rows=1)
     comments_ws.resize(rows=1000)
+    
+    st.cache_data.clear()  # キャッシュをクリア
 
 # 初期化
 if 'initialized' not in st.session_state:
@@ -1032,7 +1044,7 @@ elif st.session_state.tab == "calendar":
     for i, day_name in enumerate(days_of_week):
         with cols[i]:
             color = "#f87171" if i == 0 else "#3b82f6" if i == 6 else "#666"
-            st.markdown(f"<div style='text-align: center; font-size: 9px; color: {color}; font-weight: 700; margin-bottom: 2px;'>{day_name}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center; font-size: 8px; color: {color}; font-weight: 700; margin-bottom: 1px;'>{day_name}</div>", unsafe_allow_html=True)
     
     # 日付グリッド（ボタン形式）
     for week in cal:
@@ -1041,7 +1053,7 @@ elif st.session_state.tab == "calendar":
             with week_cols[i]:
                 if day == 0:
                     # 空セル
-                    st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
+                    st.markdown("<div style='height: 32px;'></div>", unsafe_allow_html=True)
                 else:
                     day_date = date(st.session_state.cal_month.year, st.session_state.cal_month.month, day)
                     day_str = day_date.isoformat()
@@ -1069,10 +1081,10 @@ elif st.session_state.tab == "calendar":
                     <div style='
                         background: {bg_color};
                         border: {border_width} solid {border_color};
-                        border-radius: 6px;
-                        padding: 4px 2px;
+                        border-radius: 4px;
+                        padding: 2px 1px;
                         text-align: center;
-                        min-height: 40px;
+                        min-height: 32px;
                         display: flex;
                         flex-direction: column;
                         justify-content: center;
@@ -1080,8 +1092,8 @@ elif st.session_state.tab == "calendar":
                         cursor: pointer;
                         transition: all 0.2s;
                     '>
-                        <div style='font-weight: {'800' if is_today else '600' if has_entries else '400'}; font-size: 11px; color: {day_color}; margin-bottom: 1px;'>{day}</div>
-                        <div style='font-size: 14px; line-height: 1;'>{stamps[:2] if stamps else ''}</div>
+                        <div style='font-weight: {'800' if is_today else '600' if has_entries else '400'}; font-size: 9px; color: {day_color}; margin-bottom: 0px;'>{day}</div>
+                        <div style='font-size: 11px; line-height: 1;'>{stamps[:1] if stamps else ''}</div>
                     </div>
                     """, unsafe_allow_html=True)
     
