@@ -181,6 +181,48 @@ def open_image(file):
     except Exception as e:
         raise ValueError(f"画像の読み込みに失敗しました: {e}")
 
+
+def process_image_for_storage(uploaded_file):
+    """画像を処理してGoogle Sheets用に最適化"""
+    try:
+        image = open_image(uploaded_file)
+        
+        # RGBモードに変換（透過PNG対応）
+        if image.mode in ('RGBA', 'LA', 'P'):
+            background = Image.new('RGB', image.size, (255, 255, 255))
+            if image.mode == 'P':
+                image = image.convert('RGBA')
+            if 'A' in image.mode:
+                background.paste(image, mask=image.split()[-1])
+            else:
+                background.paste(image)
+            image = background
+        elif image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        # サイズを縮小（Google Sheetsのセル制限対策）
+        image.thumbnail((500, 500), Image.Resampling.LANCZOS)
+        
+        # JPEGに変換（品質80、最適化ON）
+        buffered = BytesIO()
+        image.save(buffered, format="JPEG", quality=80, optimize=True)
+        image_data = base64.b64encode(buffered.getvalue()).decode()
+        
+        # サイズチェック（Google Sheetsのセル制限は50,000文字）
+        if len(image_data) > 45000:  # 余裕を持って45,000文字まで
+            # さらに品質を下げて再圧縮
+            buffered = BytesIO()
+            image.thumbnail((400, 400), Image.Resampling.LANCZOS)
+            image.save(buffered, format="JPEG", quality=60, optimize=True)
+            image_data = base64.b64encode(buffered.getvalue()).decode()
+            
+            if len(image_data) > 45000:
+                raise ValueError("画像が大きすぎます。別の画像を選んでください。")
+        
+        return image_data, image
+    except Exception as e:
+        raise ValueError(f"画像の処理に失敗しました: {e}")
+
 # Googleスプレッドシート接続
 @st.cache_resource
 def init_gspread():
@@ -565,6 +607,12 @@ unread_count = get_unread_comments_count(st.session_state.current_user, entries)
 # 朝の投稿画面
 # ============================================
 if st.session_state.get('screen') == 'post_morning':
+    if st.button("← 戻る", key="back_from_morning_post"):
+        if 'selected_morning_stamp' in st.session_state:
+            del st.session_state.selected_morning_stamp
+        st.session_state.screen = 'main'
+        st.rerun()
+    
     st.markdown("""
     <div style='background: linear-gradient(135deg, #f472b6, #ec4899); padding: 14px 18px; border-radius: 10px; margin: 0 0 10px;'>
         <div style='color: white; font-weight: 800; font-size: 16px;'>☀️ 朝の体調報告</div>
@@ -605,6 +653,12 @@ if st.session_state.get('screen') == 'post_morning':
 # 夜の投稿画面
 # ============================================
 elif st.session_state.get('screen') == 'post_evening':
+    if st.button("← 戻る", key="back_from_evening_post"):
+        if 'selected_evening_stamp' in st.session_state:
+            del st.session_state.selected_evening_stamp
+        st.session_state.screen = 'main'
+        st.rerun()
+    
     st.markdown("""
     <div style='background: linear-gradient(135deg, #f472b6, #ec4899); padding: 14px 18px; border-radius: 10px; margin: 0 0 10px;'>
         <div style='color: white; font-weight: 800; font-size: 16px;'>🌙 今日の日記</div>
@@ -631,12 +685,9 @@ elif st.session_state.get('screen') == 'post_evening':
         image_data = None
         if uploaded_file:
             try:
-                image = open_image(uploaded_file)
-                image.thumbnail((800, 800))
-                buffered = BytesIO()
-                image.save(buffered, format="JPEG")
-                image_data = base64.b64encode(buffered.getvalue()).decode()
-                st.image(image, use_container_width=True)
+                image_data, preview_image = process_image_for_storage(uploaded_file)
+                st.image(preview_image, use_container_width=True)
+                st.caption(f"画像サイズ: {len(image_data):,} 文字（上限45,000）")
             except Exception as e:
                 st.error(f"画像の処理に失敗しました: {e}")
                 image_data = None
@@ -665,6 +716,14 @@ elif st.session_state.get('screen') == 'post_evening':
 # 朝の編集画面
 # ============================================
 elif st.session_state.get('screen') == 'edit_morning':
+    if st.button("← 戻る", key="back_from_morning_edit"):
+        if 'selected_morning_stamp' in st.session_state:
+            del st.session_state.selected_morning_stamp
+        if 'edit_entry_id' in st.session_state:
+            del st.session_state.edit_entry_id
+        st.session_state.screen = 'main'
+        st.rerun()
+    
     st.markdown("""
     <div style='background: linear-gradient(135deg, #f472b6, #ec4899); padding: 14px 18px; border-radius: 10px; margin: 0 0 10px;'>
         <div style='color: white; font-weight: 800; font-size: 16px;'>✏️ 朝の体調を編集</div>
@@ -729,6 +788,14 @@ elif st.session_state.get('screen') == 'edit_morning':
 # 夜の編集画面
 # ============================================
 elif st.session_state.get('screen') == 'edit_evening':
+    if st.button("← 戻る", key="back_from_evening_edit"):
+        if 'selected_evening_stamp' in st.session_state:
+            del st.session_state.selected_evening_stamp
+        if 'edit_entry_id' in st.session_state:
+            del st.session_state.edit_entry_id
+        st.session_state.screen = 'main'
+        st.rerun()
+    
     st.markdown("""
     <div style='background: linear-gradient(135deg, #f472b6, #ec4899); padding: 14px 18px; border-radius: 10px; margin: 0 0 10px;'>
         <div style='color: white; font-weight: 800; font-size: 16px;'>✏️ 夜の日記を編集</div>
@@ -767,12 +834,9 @@ elif st.session_state.get('screen') == 'edit_evening':
         image_data = None
         if uploaded_file:
             try:
-                image = open_image(uploaded_file)
-                image.thumbnail((800, 800))
-                buffered = BytesIO()
-                image.save(buffered, format="JPEG")
-                image_data = base64.b64encode(buffered.getvalue()).decode()
-                st.image(image, use_container_width=True)
+                image_data, preview_image = process_image_for_storage(uploaded_file)
+                st.image(preview_image, use_container_width=True)
+                st.caption(f"画像サイズ: {len(image_data):,} 文字（上限45,000）")
             except Exception as e:
                 st.error(f"画像の処理に失敗しました: {e}")
                 image_data = None
@@ -1076,7 +1140,7 @@ elif st.session_state.tab == "calendar":
     for i, day_name in enumerate(days_of_week):
         with cols[i]:
             color = "#f87171" if i == 0 else "#3b82f6" if i == 6 else "#666"
-            st.markdown(f"<div style='text-align: center; font-size: 8px; color: {color}; font-weight: 700; margin-bottom: 1px;'>{day_name}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center; font-size: 7px; color: {color}; font-weight: 700; margin-bottom: 1px;'>{day_name}</div>", unsafe_allow_html=True)
     
     # 日付グリッド（ボタン形式）
     for week in cal:
@@ -1085,7 +1149,7 @@ elif st.session_state.tab == "calendar":
             with week_cols[i]:
                 if day == 0:
                     # 空セル
-                    st.markdown("<div style='height: 32px;'></div>", unsafe_allow_html=True)
+                    st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
                 else:
                     day_date = date(st.session_state.cal_month.year, st.session_state.cal_month.month, day)
                     day_str = day_date.isoformat()
@@ -1113,10 +1177,10 @@ elif st.session_state.tab == "calendar":
                     <div style='
                         background: {bg_color};
                         border: {border_width} solid {border_color};
-                        border-radius: 4px;
-                        padding: 2px 1px;
+                        border-radius: 3px;
+                        padding: 1px 0px;
                         text-align: center;
-                        min-height: 32px;
+                        min-height: 28px;
                         display: flex;
                         flex-direction: column;
                         justify-content: center;
@@ -1124,8 +1188,8 @@ elif st.session_state.tab == "calendar":
                         cursor: pointer;
                         transition: all 0.2s;
                     '>
-                        <div style='font-weight: {'800' if is_today else '600' if has_entries else '400'}; font-size: 9px; color: {day_color}; margin-bottom: 0px;'>{day}</div>
-                        <div style='font-size: 11px; line-height: 1;'>{stamps[:1] if stamps else ''}</div>
+                        <div style='font-weight: {'800' if is_today else '600' if has_entries else '400'}; font-size: 8px; color: {day_color}; margin-bottom: 0px;'>{day}</div>
+                        <div style='font-size: 9px; line-height: 1;'>{stamps[:1] if stamps else ''}</div>
                     </div>
                     """, unsafe_allow_html=True)
     
