@@ -809,12 +809,10 @@ tabs = [
 tab_grid_html = '<div class="tab-nav-grid">'
 for tab in tabs:
     active_class = "active" if st.session_state.tab == tab["key"] else ""
-    tab_grid_html += f'''
-    <div class="tab-nav-item {active_class}">
-        <div class="tab-nav-emoji">{tab["emoji"]}</div>
-        <div class="tab-nav-label">{tab["label"]}</div>
-    </div>
-    '''
+    tab_grid_html += '<div class="tab-nav-item ' + active_class + '">'
+    tab_grid_html += '<div class="tab-nav-emoji">' + tab["emoji"] + '</div>'
+    tab_grid_html += '<div class="tab-nav-label">' + tab["label"] + '</div>'
+    tab_grid_html += '</div>'
 tab_grid_html += '</div>'
 st.markdown(tab_grid_html, unsafe_allow_html=True)
 
