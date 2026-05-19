@@ -115,14 +115,22 @@ st.markdown("""
         color: rgba(255,255,255,0.8);
         font-size: 10px;
     }
-    .badge {
+    .notification-badge {
         background: #ef4444;
         color: white;
-        border-radius: 12px;
-        padding: 4px 8px;
-        font-size: 11px;
+        border-radius: 16px;
+        padding: 6px 12px;
+        font-size: 12px;
         font-weight: 700;
-        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.8; }
     }
     
     /* フォント */
@@ -149,7 +157,7 @@ st.markdown("""
     .tab-nav-grid {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
-        gap: 4px;
+        gap: 6px;
         width: 100%;
         margin-bottom: 8px;
     }
@@ -158,36 +166,45 @@ st.markdown("""
         display: flex;
         justify-content: center;
         align-items: center;
-        border-radius: 12px;
+        border-radius: 16px;
         font-size: 11px;
         font-weight: 700;
-        transition: all 0.2s ease;
-        background: white;
+        transition: all 0.3s ease;
+        background: #f9fafb;
         border: 2px solid #e5e7eb;
-        color: #374151;
+        color: #9ca3af;
         flex-direction: column;
-        gap: 2px;
+        gap: 4px;
         padding: 8px;
         text-align: center;
         line-height: 1.2;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     .tab-nav-item.active {
         background: linear-gradient(135deg, #f472b6, #ec4899);
         color: white;
         border-color: #ec4899;
+        box-shadow: 0 4px 12px rgba(236, 72, 153, 0.3);
+        transform: translateY(-2px);
     }
     .tab-nav-emoji {
-        font-size: 20px;
+        font-size: 24px;
+        opacity: 0.7;
+    }
+    .tab-nav-item.active .tab-nav-emoji {
+        opacity: 1;
+        transform: scale(1.1);
     }
     .tab-nav-label {
         font-size: 10px;
+        font-weight: 600;
     }
     
     /* 隠しボタングリッド */
     .tab-btn-container {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
-        gap: 4px;
+        gap: 6px;
         margin-top: -8px;
         margin-bottom: 8px;
     }
@@ -206,7 +223,7 @@ st.markdown("""
     
     @media (max-width: 320px) {
         .tab-nav-emoji {
-            font-size: 18px;
+            font-size: 20px;
         }
         .tab-nav-label {
             font-size: 9px;
@@ -977,7 +994,7 @@ elif st.session_state.get('screen') == 'edit_evening':
 # ============================================
 
 # ヘッダー
-badge_html = f"<span class='badge'>{unread_count}</span>" if unread_count > 0 else ""
+badge_html = f"<div class='notification-badge'>💬 {unread_count}件の新着</div>" if unread_count > 0 else ""
 st.markdown(f"""
 <div class='header-container'>
     <div class='header-flex'>
