@@ -115,23 +115,6 @@ st.markdown("""
         color: rgba(255,255,255,0.8);
         font-size: 10px;
     }
-    .notification-badge {
-        background: #ef4444;
-        color: white;
-        border-radius: 16px;
-        padding: 6px 12px;
-        font-size: 12px;
-        font-weight: 700;
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
-        animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.8; }
-    }
     
     /* フォント */
     h1 { font-size: 20px !important; }
@@ -267,7 +250,11 @@ def load_entries(_date_key=None):
         
     except Exception as e:
         st.error(f"エントリー読み込みエラー: {e}")
-        return pd.DataFrame()
+        return pd.DataFrame(columns=[
+            'id', 'user_id', 'entry_date', 'morning_stamp_emoji', 'morning_stamp_label',
+            'morning_message', 'evening_stamp_emoji', 'evening_stamp_label',
+            'evening_diary_text', 'image_data', 'is_favorite', 'created_at', 'updated_at'
+        ])
 
 
 @st.cache_data(ttl=300)
@@ -307,8 +294,9 @@ def load_settings():
         }
 
 
+@st.cache_data(ttl=600)
 def load_comments():
-    """Google Sheetsからコメントを読み込み"""
+    """Google Sheetsからコメントを読み込み（キャッシュ10分）"""
     try:
         sheet = init_gspread()
         worksheet = sheet.worksheet('comments')
@@ -319,8 +307,8 @@ def load_comments():
         
         return pd.DataFrame(data)
     except Exception as e:
-        st.error(f"コメント読み込みエラー: {e}")
-        return pd.DataFrame()
+        # クォータ超過などのエラーの場合、空のDataFrameを返す
+        return pd.DataFrame(columns=['id', 'entry_id', 'user_id', 'comment_text', 'created_at'])
 
 
 def save_entry(user_id, entry_date, morning_stamp_emoji=None, morning_stamp_label=None, 
@@ -660,15 +648,7 @@ current_user = get_current_user()
 user_name = settings.get(f'user_{current_user.lower()}_name', f'ユーザー{current_user}')
 user_avatar = settings.get(f'user_{current_user.lower()}_avatar', '👤')
 
-# 未読コメント数を計算
-partner_user = 'B' if current_user == 'A' else 'A'
-my_entry_ids = entries_df[entries_df['user_id'] == current_user]['id'].tolist()
-unread_comments = comments_df[
-    (comments_df['entry_id'].isin(my_entry_ids)) & 
-    (comments_df['user_id'] == partner_user)
-]
-unread_count = len(unread_comments)
-
+# ヘッダーHTML（通知バッジを削除）
 header_html = f"""
 <div class="header-container">
     <div class="header-flex">
@@ -677,16 +657,6 @@ header_html = f"""
             <div class="header-title">📔 ふたりの日記</div>
             <div class="header-subtitle">{user_name} でログイン中</div>
         </div>
-"""
-
-if unread_count > 0:
-    header_html += f"""
-        <div class="notification-badge">
-            💬 {unread_count}件の新着
-        </div>
-"""
-
-header_html += """
     </div>
 </div>
 """
@@ -721,20 +691,74 @@ st.markdown('</div>', unsafe_allow_html=True)
 # ===== ホームタブ =====
 if st.session_state.tab == 'home':
     today = get_today_jst()
-    today_entry = entries_df[
+    partner_user = 'B' if current_user == 'A' else 'A'
+    
+    # 自分と相手のエントリーを取得
+    my_entry = entries_df[
         (entries_df['user_id'] == current_user) & 
         (entries_df['entry_date'] == today)
     ]
+    partner_entry = entries_df[
+        (entries_df['user_id'] == partner_user) & 
+        (entries_df['entry_date'] == today)
+    ]
     
-    has_morning = not today_entry.empty and today_entry.iloc[0]['morning_stamp_emoji']
-    has_evening = not today_entry.empty and today_entry.iloc[0]['evening_stamp_emoji']
+    has_my_morning = not my_entry.empty and my_entry.iloc[0]['morning_stamp_emoji']
+    has_my_evening = not my_entry.empty and my_entry.iloc[0]['evening_stamp_emoji']
+    has_partner_morning = not partner_entry.empty and partner_entry.iloc[0]['morning_stamp_emoji']
+    has_partner_evening = not partner_entry.empty and partner_entry.iloc[0]['evening_stamp_emoji']
     
-    # 朝のチェックイン
-    st.markdown("### ☀️ 朝のチェックイン")
+    # 相手の今日の状態を表示
+    partner_name = settings.get(f'user_{partner_user.lower()}_name', f'ユーザー{partner_user}')
+    partner_avatar = settings.get(f'user_{partner_user.lower()}_avatar', '👤')
     
-    if has_morning and not st.session_state.show_morning_form:
+    st.markdown(f"### 💕 {partner_name}の今日")
+    
+    if has_partner_morning or has_partner_evening:
+        partner_data = partner_entry.iloc[0]
+        
+        card_html = '<div class="card">'
+        
+        # 朝の状態
+        if has_partner_morning:
+            card_html += f"""
+            <div style="margin-bottom: {'12px' if has_partner_evening else '0'};">
+                <div style="font-size: 12px; color: #9ca3af; margin-bottom: 4px;">☀️ 朝</div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="font-size: 32px;">{partner_data['morning_stamp_emoji']}</div>
+                    <div>
+                        <div style="font-weight: 700; color: #ec4899;">{partner_data['morning_stamp_label']}</div>
+                        <div style="color: #6b7280; font-size: 14px;">{partner_data['morning_message'] if partner_data['morning_message'] else ''}</div>
+                    </div>
+                </div>
+            </div>
+            """
+        
+        # 夜の状態
+        if has_partner_evening:
+            card_html += f"""
+            <div>
+                <div style="font-size: 12px; color: #9ca3af; margin-bottom: 4px;">🌙 夜</div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="font-size: 32px;">{partner_data['evening_stamp_emoji']}</div>
+                    <div style="font-weight: 700; color: #ec4899;">{partner_data['evening_stamp_label']}</div>
+                </div>
+            </div>
+            """
+        
+        card_html += '</div>'
+        st.markdown(card_html, unsafe_allow_html=True)
+    else:
+        st.info(f"{partner_name}はまだ今日の記録をしていません")
+    
+    st.markdown("---")
+    
+    # 朝の記録
+    st.markdown("### ☀️ 朝の気分")
+    
+    if has_my_morning and not st.session_state.show_morning_form:
         # 朝の記録がある場合は表示
-        entry = today_entry.iloc[0]
+        entry = my_entry.iloc[0]
         st.markdown(f"""
         <div class="card">
             <div style="font-size: 48px; text-align: center; margin-bottom: 8px;">
@@ -757,12 +781,12 @@ if st.session_state.tab == 'home':
         with col2:
             if st.button("🗑️ 削除", key="delete_morning_btn", use_container_width=True):
                 if delete_morning_entry(current_user, today):
-                    st.success("朝のチェックインを削除しました")
+                    st.success("朝の記録を削除しました")
                     st.rerun()
     
-    elif not has_morning and not st.session_state.show_morning_form:
+    elif not has_my_morning and not st.session_state.show_morning_form:
         # 朝の記録がない場合は「追加」ボタンのみ表示
-        if st.button("➕ 朝のチェックインを追加", key="add_morning_btn", type="primary", use_container_width=True):
+        if st.button("➕ 朝の気分を記録", key="add_morning_btn", type="primary", use_container_width=True):
             st.session_state.show_morning_form = True
             st.rerun()
     
@@ -801,7 +825,7 @@ if st.session_state.tab == 'home':
         if st.session_state.selected_morning_stamp:
             morning_message = st.text_area(
                 "メッセージ（任意）",
-                value=today_entry.iloc[0]['morning_message'] if has_morning else "",
+                value=my_entry.iloc[0]['morning_message'] if has_my_morning else "",
                 placeholder="今日の気分やメッセージを書いてね",
                 key="morning_message_input",
                 height=80
@@ -814,7 +838,7 @@ if st.session_state.tab == 'home':
                     morning_stamp_label=st.session_state.selected_morning_stamp['label'],
                     morning_message=morning_message
                 ):
-                    st.success("朝のチェックインを保存しました！")
+                    st.success("朝の記録を保存しました！")
                     st.session_state.show_morning_form = False
                     st.session_state.selected_morning_stamp = None
                     st.rerun()
@@ -822,11 +846,11 @@ if st.session_state.tab == 'home':
     st.markdown("---")
     
     # 夜の日記
-    st.markdown("### 🌙 夜の日記")
+    st.markdown("### 🌙 今日の日記")
     
-    if has_evening and not st.session_state.show_evening_form:
+    if has_my_evening and not st.session_state.show_evening_form:
         # 夜の記録がある場合は表示
-        entry = today_entry.iloc[0]
+        entry = my_entry.iloc[0]
         st.markdown(f"""
         <div class="card">
             <div style="font-size: 48px; text-align: center; margin-bottom: 8px;">
@@ -859,12 +883,12 @@ if st.session_state.tab == 'home':
         with col2:
             if st.button("🗑️ 削除", key="delete_evening_btn", use_container_width=True):
                 if delete_evening_entry(current_user, today):
-                    st.success("夜の日記を削除しました")
+                    st.success("日記を削除しました")
                     st.rerun()
     
-    elif not has_evening and not st.session_state.show_evening_form:
+    elif not has_my_evening and not st.session_state.show_evening_form:
         # 夜の記録がない場合は「追加」ボタンのみ表示
-        if st.button("➕ 夜の日記を追加", key="add_evening_btn", type="primary", use_container_width=True):
+        if st.button("➕ 今日の日記を書く", key="add_evening_btn", type="primary", use_container_width=True):
             st.session_state.show_evening_form = True
             st.rerun()
     
@@ -903,7 +927,7 @@ if st.session_state.tab == 'home':
         if st.session_state.selected_evening_stamp:
             evening_diary_text = st.text_area(
                 "今日の日記",
-                value=today_entry.iloc[0]['evening_diary_text'] if has_evening else "",
+                value=my_entry.iloc[0]['evening_diary_text'] if has_my_evening else "",
                 placeholder="今日あったことを書いてね",
                 key="evening_diary_input",
                 height=120
@@ -936,7 +960,7 @@ if st.session_state.tab == 'home':
                     save_params['image_data'] = image_data
                 
                 if save_entry(**save_params):
-                    st.success("夜の日記を保存しました！")
+                    st.success("日記を保存しました！")
                     st.session_state.show_evening_form = False
                     st.session_state.selected_evening_stamp = None
                     st.rerun()
@@ -1044,6 +1068,8 @@ elif st.session_state.tab == 'calendar':
 elif st.session_state.tab == 'history':
     st.markdown("### 📖 ふたりの履歴")
     
+    partner_user = 'B' if current_user == 'A' else 'A'
+    
     # フィルター
     filter_col1, filter_col2 = st.columns(2)
     with filter_col1:
@@ -1149,9 +1175,13 @@ elif st.session_state.tab == 'history':
                         st.rerun()
             
             with col2:
-                # コメント数を表示
-                entry_comments = comments_df[comments_df['entry_id'] == entry['id']]
-                comment_count = len(entry_comments)
+                # コメント数を表示（DataFrameが空でない場合のみ）
+                if not comments_df.empty and 'entry_id' in comments_df.columns:
+                    entry_comments = comments_df[comments_df['entry_id'] == entry['id']]
+                    comment_count = len(entry_comments)
+                else:
+                    comment_count = 0
+                    
                 if st.button(f"💬 コメント ({comment_count})", key=f"comment_{entry['id']}", use_container_width=True):
                     st.session_state[f'show_comments_{entry["id"]}'] = not st.session_state.get(f'show_comments_{entry["id"]}', False)
                     st.rerun()
@@ -1168,21 +1198,22 @@ elif st.session_state.tab == 'history':
                 st.markdown("**💬 コメント**")
                 
                 # 既存コメント表示
-                entry_comments = comments_df[comments_df['entry_id'] == entry['id']].sort_values('created_at')
-                for _, comment in entry_comments.iterrows():
-                    comment_user = comment['user_id']
-                    comment_name = settings.get(f'user_{comment_user.lower()}_name', f'ユーザー{comment_user}')
-                    comment_avatar = settings.get(f'user_{comment_user.lower()}_avatar', '👤')
-                    
-                    st.markdown(f"""
-                    <div class="comment-box">
-                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
-                            <div style="font-size: 16px;">{comment_avatar}</div>
-                            <div style="font-size: 12px; font-weight: 700; color: #374151;">{comment_name}</div>
+                if not comments_df.empty and 'entry_id' in comments_df.columns:
+                    entry_comments = comments_df[comments_df['entry_id'] == entry['id']].sort_values('created_at')
+                    for _, comment in entry_comments.iterrows():
+                        comment_user = comment['user_id']
+                        comment_name = settings.get(f'user_{comment_user.lower()}_name', f'ユーザー{comment_user}')
+                        comment_avatar = settings.get(f'user_{comment_user.lower()}_avatar', '👤')
+                        
+                        st.markdown(f"""
+                        <div class="comment-box">
+                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                                <div style="font-size: 16px;">{comment_avatar}</div>
+                                <div style="font-size: 12px; font-weight: 700; color: #374151;">{comment_name}</div>
+                            </div>
+                            <div style="font-size: 14px; color: #374151;">{comment['comment_text']}</div>
                         </div>
-                        <div style="font-size: 14px; color: #374151;">{comment['comment_text']}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                        """, unsafe_allow_html=True)
                 
                 # コメント追加
                 new_comment = st.text_area(
