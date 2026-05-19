@@ -27,7 +27,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# カスタムCSS（スマホ完全対応版）v1.5 - 横並び完全固定
+# カスタムCSS（スマホ完全対応版）v1.6 - アイコンを枠内に配置
 st.markdown("""
 <style>
     /* 全デバイス共通: 2カラムレイアウト */
@@ -153,67 +153,39 @@ st.markdown("""
         }
     }
     
-    /* タブナビゲーション v1.5 - 横並び完全固定 */
-    .tab-nav-container {
-        display: flex !important;
-        flex-direction: row !important;
-        gap: 6px !important;
-        margin-bottom: 16px !important;
-    }
-    
-    .tab-nav-container > div[data-testid="column"] {
-        flex: 1 1 0 !important;
-        min-width: 0 !important;
-        padding: 0 !important;
-    }
-    
-    .tab-nav-container .stButton {
-        margin-bottom: 0 !important;
-        width: 100% !important;
+    /* タブナビゲーション v1.6 - 絵文字を枠内に配置 */
+    div[data-testid="column"] {
+        padding: 0 3px !important;
     }
     
     .tab-nav-container .stButton > button {
-        padding: 8px 4px !important;
         min-height: 70px !important;
         height: 70px !important;
-        font-size: 9px !important;
-        line-height: 1.2 !important;
+        font-size: 10px !important;
+        line-height: 1.3 !important;
         border-radius: 16px !important;
-        white-space: nowrap !important;
+        white-space: pre-line !important;
         word-break: keep-all !important;
         display: flex !important;
         flex-direction: column !important;
         justify-content: center !important;
         align-items: center !important;
+        padding: 4px !important;
     }
     
-    /* スタンプコンテナ */
-    .stamp-container {
-        display: flex !important;
-        flex-direction: column !important;
-        gap: 8px !important;
-        margin: 12px 0 !important;
-    }
-    
-    .stamp-row {
-        display: flex !important;
-        flex-direction: row !important;
-        gap: 6px !important;
-    }
-    
-    .stamp-row > div[data-testid="column"] {
-        flex: 1 1 0 !important;
-        min-width: 0 !important;
-        padding: 0 !important;
-    }
-    
+    /* スタンプボタン v1.6 - 絵文字を枠内に配置 */
     .stamp-container .stButton > button {
         min-height: 80px !important;
-        padding: 12px 8px !important;
+        padding: 8px 4px !important;
         font-size: 11px !important;
-        line-height: 1.2 !important;
+        line-height: 1.3 !important;
         border-radius: 16px !important;
-        white-space: nowrap !important;
+        white-space: pre-line !important;
+        word-break: keep-all !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: center !important;
+        align-items: center !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -721,7 +693,7 @@ header_html += """
 
 st.markdown(header_html, unsafe_allow_html=True)
 
-# ===== タブナビゲーション =====
+# ===== タブナビゲーション（アイコンを枠内に配置） =====
 tabs = [
     {"key": "home", "emoji": "🏠", "label": "ホーム"},
     {"key": "calendar", "emoji": "📅", "label": "カレンダー"},
@@ -735,11 +707,9 @@ for i, tab in enumerate(tabs):
     with cols[i]:
         is_active = st.session_state.tab == tab["key"]
         
-        # 絵文字を32pxで表示
-        st.markdown(f'<div style="text-align: center; font-size: 32px; margin-bottom: 2px;">{tab["emoji"]}</div>', unsafe_allow_html=True)
-        
+        # 絵文字とラベルを1つのボタンに含める
         if st.button(
-            tab["label"],
+            f"{tab['emoji']}\n{tab['label']}",
             key=f"tab_{tab['key']}",
             use_container_width=True,
             type="primary" if is_active else "secondary"
@@ -805,10 +775,9 @@ if st.session_state.tab == 'home':
         
         st.markdown("**今日の調子は？**")
         
-        # 8個のスタンプを2行 x 4列で表示
+        # 8個のスタンプを2行 x 4列で表示（アイコンを枠内に配置）
         st.markdown('<div class="stamp-container">', unsafe_allow_html=True)
         for row in range(2):
-            st.markdown('<div class="stamp-row">', unsafe_allow_html=True)
             cols = st.columns(4)
             for col in range(4):
                 i = row * 4 + col
@@ -818,18 +787,15 @@ if st.session_state.tab == 'home':
                                  st.session_state.selected_morning_stamp['emoji'] == stamp['emoji'])
                     
                     with cols[col]:
-                        # 絵文字を32pxで表示
-                        st.markdown(f'<div style="text-align: center; font-size: 32px; margin-bottom: 4px;">{stamp["emoji"]}</div>', unsafe_allow_html=True)
-                        
+                        # 絵文字とラベルを1つのボタンに含める
                         if st.button(
-                            stamp["label"],
+                            f"{stamp['emoji']}\n{stamp['label']}",
                             key=f"morning_{row}_{col}",
                             use_container_width=True,
                             type="primary" if is_selected else "secondary"
                         ):
                             st.session_state.selected_morning_stamp = stamp
                             st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
         
         if st.session_state.selected_morning_stamp:
@@ -911,10 +877,9 @@ if st.session_state.tab == 'home':
         
         st.markdown("**今日の気分は？**")
         
-        # 8個のスタンプを2行 x 4列で表示
+        # 8個のスタンプを2行 x 4列で表示（アイコンを枠内に配置）
         st.markdown('<div class="stamp-container">', unsafe_allow_html=True)
         for row in range(2):
-            st.markdown('<div class="stamp-row">', unsafe_allow_html=True)
             cols = st.columns(4)
             for col in range(4):
                 i = row * 4 + col
@@ -924,18 +889,15 @@ if st.session_state.tab == 'home':
                                  st.session_state.selected_evening_stamp['emoji'] == stamp['emoji'])
                     
                     with cols[col]:
-                        # 絵文字を32pxで表示
-                        st.markdown(f'<div style="text-align: center; font-size: 32px; margin-bottom: 4px;">{stamp["emoji"]}</div>', unsafe_allow_html=True)
-                        
+                        # 絵文字とラベルを1つのボタンに含める
                         if st.button(
-                            stamp["label"],
+                            f"{stamp['emoji']}\n{stamp['label']}",
                             key=f"evening_{row}_{col}",
                             use_container_width=True,
                             type="primary" if is_selected else "secondary"
                         ):
                             st.session_state.selected_evening_stamp = stamp
                             st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
         
         if st.session_state.selected_evening_stamp:
