@@ -145,25 +145,43 @@ st.markdown("""
         }
     }
     
-    /* タブナビゲーション（常に横並び） */
+    /* タブナビゲーション（超強力横並び固定） */
     .tab-navigation {
         width: 100%;
         margin-bottom: 16px;
+        overflow: visible !important;
     }
-    /* Streamlitのcolumnsコンテナを強制的に横並びに */
+    /* 全ての画面サイズで強制的に横並び */
     .tab-navigation [data-testid="stHorizontalBlock"] {
         display: flex !important;
         flex-direction: row !important;
+        flex-wrap: nowrap !important;
         gap: 4px !important;
+        width: 100% !important;
     }
     .tab-navigation [data-testid="stHorizontalBlock"] > div {
-        flex: 1 !important;
-        min-width: 0 !important;
+        flex: 0 0 calc(25% - 3px) !important;
+        min-width: 70px !important;
+        max-width: 25% !important;
+        flex-shrink: 0 !important;
+    }
+    .tab-navigation .stButton {
+        width: 100% !important;
     }
     .tab-navigation .stButton > button {
-        padding: 8px 4px;
-        font-size: 11px;
-        white-space: nowrap;
+        width: 100% !important;
+        padding: 10px 4px !important;
+        font-size: 11px !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+    /* 320px以下でもタブは横並び（フォントサイズだけ調整） */
+    @media (max-width: 320px) {
+        .tab-navigation .stButton > button {
+            font-size: 9px !important;
+            padding: 8px 2px !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -944,39 +962,26 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# タブナビゲーション（HTML/CSS Grid実装 - モバイル対応）
-# URLパラメータからタブを取得
-query_params = st.query_params
-if "tab" in query_params:
-    new_tab = query_params["tab"]
-    if new_tab in ["home", "calendar", "history", "settings"]:
-        st.session_state.tab = new_tab
-    st.query_params.clear()
-
-# タブボタンHTML
-tab_home_class = "active" if st.session_state.tab == "home" else ""
-tab_cal_class = "active" if st.session_state.tab == "calendar" else ""
-tab_hist_class = "active" if st.session_state.tab == "history" else ""
-tab_set_class = "active" if st.session_state.tab == "settings" else ""
-
-tabs_html = f'''
-<div class="tab-nav-grid">
-    <form action="" method="get" style="margin: 0;">
-        <button type="submit" name="tab" value="home" class="tab-nav-button {tab_home_class}">&#127968; ホーム</button>
-    </form>
-    <form action="" method="get" style="margin: 0;">
-        <button type="submit" name="tab" value="calendar" class="tab-nav-button {tab_cal_class}">&#128197; カレンダー</button>
-    </form>
-    <form action="" method="get" style="margin: 0;">
-        <button type="submit" name="tab" value="history" class="tab-nav-button {tab_hist_class}">&#128214; 履歴</button>
-    </form>
-    <form action="" method="get" style="margin: 0;">
-        <button type="submit" name="tab" value="settings" class="tab-nav-button {tab_set_class}">&#9881;&#65039; 設定</button>
-    </form>
-</div>
-'''
-
-st.markdown(tabs_html, unsafe_allow_html=True)
+# タブナビゲーション（超強力CSS版 - 全デバイス対応）
+st.markdown('<div class="tab-navigation">', unsafe_allow_html=True)
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    if st.button("🏠 ホーム", key="tab_home", use_container_width=True):
+        st.session_state.tab = "home"
+        st.rerun()
+with col2:
+    if st.button("📅 カレンダー", key="tab_calendar", use_container_width=True):
+        st.session_state.tab = "calendar"
+        st.rerun()
+with col3:
+    if st.button("📖 履歴", key="tab_history", use_container_width=True):
+        st.session_state.tab = "history"
+        st.rerun()
+with col4:
+    if st.button("⚙️ 設定", key="tab_settings", use_container_width=True):
+        st.session_state.tab = "settings"
+        st.rerun()
+st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 
