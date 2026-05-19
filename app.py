@@ -27,7 +27,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# カスタムCSS（スマホ完全対応版）v1.2
+# カスタムCSS（スマホ完全対応版）v1.3
 st.markdown("""
 <style>
     /* 全デバイス共通: 2カラムレイアウト */
@@ -153,116 +153,72 @@ st.markdown("""
         }
     }
     
-    /* タブナビゲーション v1.2 - 完全オーバーレイ */
-    .tab-nav-wrapper {
-        position: relative;
-        width: 100%;
+    /* タブナビゲーション v1.3 - シンプル実装 */
+    .tab-nav-container {
         margin-bottom: 16px;
     }
-    .tab-nav-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 6px;
-        width: 100%;
-        pointer-events: none;
+    .tab-nav-container .stButton {
+        margin-bottom: 0 !important;
     }
-    .tab-nav-item {
+    .tab-nav-container .stButton > button {
         aspect-ratio: 1;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        border-radius: 16px;
-        font-size: 11px;
-        font-weight: 700;
-        transition: all 0.3s ease;
-        background: #f9fafb;
-        border: 2px solid #e5e7eb;
-        color: #9ca3af;
-        flex-direction: column;
-        gap: 4px;
-        padding: 8px;
-        text-align: center;
-        line-height: 1.2;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        box-sizing: border-box;
+        height: auto !important;
+        padding: 16px 8px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 4px !important;
+        font-size: 10px !important;
+        line-height: 1.2 !important;
+        border-radius: 16px !important;
+        transition: all 0.3s ease !important;
+        background: #f9fafb !important;
+        border: 2px solid #e5e7eb !important;
+        color: #9ca3af !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
     }
-    .tab-nav-item.active {
-        background: linear-gradient(135deg, #f472b6, #ec4899);
-        color: white;
-        border-color: #ec4899;
-        box-shadow: 0 4px 12px rgba(236, 72, 153, 0.3);
+    .tab-nav-container .stButton > button:hover {
+        border-color: #f472b6 !important;
+        box-shadow: 0 2px 8px rgba(244,114,182,0.2) !important;
     }
-    .tab-nav-emoji {
-        font-size: 24px;
-        line-height: 1;
-    }
-    .tab-nav-item.active .tab-nav-emoji {
-        opacity: 1;
-    }
-    .tab-nav-label {
-        font-size: 10px;
-        font-weight: 600;
-        line-height: 1;
+    .tab-nav-container .stButton > button[data-selected="true"] {
+        background: linear-gradient(135deg, #f472b6, #ec4899) !important;
+        color: white !important;
+        border-color: #ec4899 !important;
+        box-shadow: 0 4px 12px rgba(236, 72, 153, 0.3) !important;
     }
     
-    /* 隠しボタングリッド - absoluteで完全に重ねる */
-    .tab-btn-container {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 6px;
-        z-index: 10;
+    /* スタンプボタン v1.3 - シンプル実装 */
+    .stamp-container .stButton > button {
+        min-height: 80px !important;
+        padding: 12px 8px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 4px !important;
+        font-size: 11px !important;
+        line-height: 1.2 !important;
+        border-radius: 16px !important;
+        transition: all 0.3s ease !important;
+        background: white !important;
+        border: 2px solid #e5e7eb !important;
+        color: #374151 !important;
     }
-    .tab-btn-container .stButton {
-        aspect-ratio: 1;
+    .stamp-container .stButton > button:hover {
+        border-color: #f472b6 !important;
+        box-shadow: 0 2px 8px rgba(244,114,182,0.2) !important;
     }
-    .tab-btn-container .stButton > button {
-        height: 100%;
-        width: 100%;
-        opacity: 0;
-        background: transparent !important;
-        border: none !important;
-        padding: 0 !important;
-        min-height: 0 !important;
-        cursor: pointer !important;
+    .stamp-container .stButton > button[data-selected="true"] {
+        background: linear-gradient(135deg, #f472b6, #ec4899) !important;
+        color: white !important;
+        border-color: #ec4899 !important;
+        box-shadow: 0 4px 12px rgba(236, 72, 153, 0.4) !important;
     }
-    
-    @media (max-width: 320px) {
-        .tab-nav-emoji {
-            font-size: 20px;
-        }
-        .tab-nav-label {
-            font-size: 9px;
-        }
-    }
-    
-    /* スタンプボタンのオーバーレイ修正 */
-    .stamp-wrapper {
-        position: relative;
-        width: 100%;
-    }
-    .stamp-display {
-        pointer-events: none;
-    }
-    .stamp-btn-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        z-index: 10;
-    }
-    .stamp-btn-overlay .stButton > button {
-        height: 100%;
-        width: 100%;
-        opacity: 0;
-        background: transparent !important;
-        border: none !important;
-        padding: 0 !important;
-        cursor: pointer !important;
+    .stamp-emoji {
+        font-size: 32px !important;
+        line-height: 1 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -715,51 +671,6 @@ def process_image_for_storage(uploaded_file):
         return None, None
 
 
-def show_stamp_button(stamp, key_prefix, current_selection=None):
-    """スタンプボタンを表示"""
-    is_selected = current_selection and current_selection['emoji'] == stamp['emoji']
-    
-    button_style = """
-        background: linear-gradient(135deg, #f472b6, #ec4899);
-        color: white;
-        border: 3px solid #ec4899;
-        box-shadow: 0 4px 12px rgba(236, 72, 153, 0.4);
-    """ if is_selected else """
-        background: white;
-        color: #374151;
-        border: 2px solid #e5e7eb;
-    """
-    
-    button_html = f"""
-    <div class="stamp-display" style="
-        {button_style}
-        border-radius: 16px;
-        padding: 12px 8px;
-        text-align: center;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        min-height: 80px;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        gap: 4px;
-    ">
-        <div style="font-size: 32px;">{stamp['emoji']}</div>
-        <div style="font-size: 11px; font-weight: 600; line-height: 1.2;">{stamp['label']}</div>
-    </div>
-    """
-    
-    st.markdown(button_html, unsafe_allow_html=True)
-    
-    return st.button(
-        f"{stamp['emoji']} {stamp['label']}", 
-        key=f"{key_prefix}_{stamp['emoji']}", 
-        use_container_width=True,
-        type="primary" if is_selected else "secondary"
-    )
-
-
 # ===== セッション状態の初期化 =====
 if 'tab' not in st.session_state:
     st.session_state.tab = 'home'
@@ -840,32 +751,24 @@ tabs = [
     {"key": "settings", "emoji": "⚙️", "label": "設定"}
 ]
 
-# ラッパーで囲む
-st.markdown('<div class="tab-nav-wrapper">', unsafe_allow_html=True)
-
-# HTMLでタブを表示（見た目）
-tab_grid_html = '<div class="tab-nav-grid">'
-for tab in tabs:
-    active_class = "active" if st.session_state.tab == tab["key"] else ""
-    tab_grid_html += '<div class="tab-nav-item ' + active_class + '">'
-    tab_grid_html += '<div class="tab-nav-emoji">' + tab["emoji"] + '</div>'
-    tab_grid_html += '<div class="tab-nav-label">' + tab["label"] + '</div>'
-    tab_grid_html += '</div>'
-tab_grid_html += '</div>'
-st.markdown(tab_grid_html, unsafe_allow_html=True)
-
-# 隠しボタンでクリック検知（absoluteで完全に重ねる）
-st.markdown('<div class="tab-btn-container">', unsafe_allow_html=True)
+st.markdown('<div class="tab-nav-container">', unsafe_allow_html=True)
 cols = st.columns(4)
 for i, tab in enumerate(tabs):
     with cols[i]:
-        button_key = f"tab_{tab['key']}_btn"
-        if st.button("　", key=button_key, use_container_width=True):
+        # ボタンにdata-selected属性を設定（CSSで使用）
+        is_active = st.session_state.tab == tab["key"]
+        
+        # カスタムラベル（絵文字を大きく表示）
+        button_label = f"{tab['emoji']}\n{tab['label']}"
+        
+        if st.button(
+            button_label,
+            key=f"tab_{tab['key']}",
+            use_container_width=True,
+            type="primary" if is_active else "secondary"
+        ):
             st.session_state.tab = tab["key"]
             st.rerun()
-st.markdown('</div>', unsafe_allow_html=True)
-
-# ラッパー終了
 st.markdown('</div>', unsafe_allow_html=True)
 
 # ===== ホームタブ =====
@@ -919,19 +822,29 @@ if st.session_state.tab == 'home':
         st.markdown("**今日の調子は？**")
         
         # 8個のスタンプを2行 x 4列で表示
+        st.markdown('<div class="stamp-container">', unsafe_allow_html=True)
         for row in range(2):
             cols = st.columns(4)
             for col in range(4):
                 i = row * 4 + col
                 if i < len(CONDITION_STAMPS):
+                    stamp = CONDITION_STAMPS[i]
+                    is_selected = (st.session_state.selected_morning_stamp and 
+                                 st.session_state.selected_morning_stamp['emoji'] == stamp['emoji'])
+                    
                     with cols[col]:
-                        if show_stamp_button(
-                            CONDITION_STAMPS[i],
-                            f"morning_{row}_{col}",
-                            st.session_state.selected_morning_stamp
+                        # 絵文字を大きく表示
+                        button_label = f"{stamp['emoji']}\n{stamp['label']}"
+                        
+                        if st.button(
+                            button_label,
+                            key=f"morning_{row}_{col}",
+                            use_container_width=True,
+                            type="primary" if is_selected else "secondary"
                         ):
-                            st.session_state.selected_morning_stamp = CONDITION_STAMPS[i]
+                            st.session_state.selected_morning_stamp = stamp
                             st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
         
         if st.session_state.selected_morning_stamp:
             morning_message = st.text_area(
@@ -1004,19 +917,29 @@ if st.session_state.tab == 'home':
         st.markdown("**今日の気分は？**")
         
         # 8個のスタンプを2行 x 4列で表示
+        st.markdown('<div class="stamp-container">', unsafe_allow_html=True)
         for row in range(2):
             cols = st.columns(4)
             for col in range(4):
                 i = row * 4 + col
                 if i < len(MOOD_STAMPS):
+                    stamp = MOOD_STAMPS[i]
+                    is_selected = (st.session_state.selected_evening_stamp and 
+                                 st.session_state.selected_evening_stamp['emoji'] == stamp['emoji'])
+                    
                     with cols[col]:
-                        if show_stamp_button(
-                            MOOD_STAMPS[i],
-                            f"evening_{row}_{col}",
-                            st.session_state.selected_evening_stamp
+                        # 絵文字を大きく表示
+                        button_label = f"{stamp['emoji']}\n{stamp['label']}"
+                        
+                        if st.button(
+                            button_label,
+                            key=f"evening_{row}_{col}",
+                            use_container_width=True,
+                            type="primary" if is_selected else "secondary"
                         ):
-                            st.session_state.selected_evening_stamp = MOOD_STAMPS[i]
+                            st.session_state.selected_evening_stamp = stamp
                             st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
         
         if st.session_state.selected_evening_stamp:
             evening_diary = st.text_area(
