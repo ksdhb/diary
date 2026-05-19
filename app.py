@@ -27,7 +27,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# カスタムCSS（スマホ完全対応版）v1.6 - アイコンを枠内に配置
+# カスタムCSS（スマホ完全対応版）v1.7 - カラム設定を限定
 st.markdown("""
 <style>
     /* 全デバイス共通: 2カラムレイアウト */
@@ -136,8 +136,8 @@ st.markdown("""
         }
     }
     
-    /* タブナビゲーション v1.6 - 絵文字を枠内に配置 */
-    div[data-testid="column"] {
+    /* タブナビゲーション v1.7 - カラム設定を限定 */
+    .tab-nav-container div[data-testid="column"] {
         padding: 0 3px !important;
     }
     
@@ -156,7 +156,11 @@ st.markdown("""
         padding: 4px !important;
     }
     
-    /* スタンプボタン v1.6 - 絵文字を枠内に配置 */
+    /* スタンプボタン v1.7 - カラム設定を限定 */
+    .stamp-container div[data-testid="column"] {
+        padding: 0 3px !important;
+    }
+    
     .stamp-container .stButton > button {
         min-height: 80px !important;
         padding: 8px 4px !important;
