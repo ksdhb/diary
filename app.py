@@ -1134,10 +1134,10 @@ elif st.session_state.tab == "calendar":
     
     # 色の説明
     st.markdown("""
-    <div style='display: flex; gap: 10px; font-size: 10px; margin-bottom: 10px;'>
-        <span style='background: #fef3c7; border: 2px solid #f59e0b; padding: 2px 8px; border-radius: 4px;'>今日</span>
-        <span style='background: #fce7f3; border: 2px solid #f472b6; padding: 2px 8px; border-radius: 4px;'>投稿あり</span>
-        <span style='background: #f9fafb; border: 1px solid #e5e7eb; padding: 2px 8px; border-radius: 4px;'>通常</span>
+    <div style='display: flex; gap: 8px; font-size: 9px; margin-bottom: 10px; flex-wrap: wrap;'>
+        <span style='background: #fef3c7; border: 2px solid #f59e0b; padding: 2px 6px; border-radius: 3px;'>今日</span>
+        <span style='background: #fce7f3; border: 2px solid #f472b6; padding: 2px 6px; border-radius: 3px;'>投稿あり</span>
+        <span style='background: #f9fafb; border: 1px solid #e5e7eb; padding: 2px 6px; border-radius: 3px;'>通常</span>
     </div>
     """, unsafe_allow_html=True)
     
@@ -1148,7 +1148,7 @@ elif st.session_state.tab == "calendar":
             st.session_state.cal_month = st.session_state.cal_month.replace(day=1) - timedelta(days=1)
             st.rerun()
     with col2:
-        st.markdown(f"<div style='text-align: center; font-weight: 800; color: #ec4899; font-size: 18px; padding: 8px;'>{st.session_state.cal_month.strftime('%Y年%m月')}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; font-weight: 800; color: #ec4899; font-size: 16px; padding: 8px;'>{st.session_state.cal_month.strftime('%Y年%m月')}</div>", unsafe_allow_html=True)
     with col3:
         if st.button("次月 ▶", key="next_month", use_container_width=True):
             st.session_state.cal_month = (st.session_state.cal_month.replace(day=28) + timedelta(days=4)).replace(day=1)
@@ -1159,60 +1159,76 @@ elif st.session_state.tab == "calendar":
     # 今月のエントリーを取得
     cal = calendar.monthcalendar(st.session_state.cal_month.year, st.session_state.cal_month.month)
     
-    # 曜日ヘッダー（小さめ）
-    days_of_week = ["日", "月", "火", "水", "木", "金", "土"]
-    cols = st.columns(7)
-    for i, day_name in enumerate(days_of_week):
-        with cols[i]:
-            color = "#f87171" if i == 0 else "#3b82f6" if i == 6 else "#666"
-            st.markdown(f"<div style='text-align: center; font-size: 5px; color: {color}; font-weight: 600; margin-bottom: 0px;'>{day_name}</div>", unsafe_allow_html=True)
+    # カレンダーHTMLを構築（CSS Grid使用）
+    calendar_html = """
+    <style>
+    .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+        width: 100%;
+        margin: 0 auto;
+    }
+    .calendar-header {
+        text-align: center;
+        font-size: 9px;
+        font-weight: 600;
+        padding: 4px 0;
+    }
+    .calendar-cell {
+        aspect-ratio: 1;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        border-radius: 3px;
+        font-size: 10px;
+    }
+    </style>
+    <div class="calendar-grid">
+    """
     
-    # 日付グリッド（ボタン形式）
+    # 曜日ヘッダー
+    days_of_week = ["日", "月", "火", "水", "木", "金", "土"]
+    for i, day_name in enumerate(days_of_week):
+        color = "#f87171" if i == 0 else "#3b82f6" if i == 6 else "#666"
+        calendar_html += f'<div class="calendar-header" style="color: {color};">{day_name}</div>'
+    
+    # 日付セル
     for week in cal:
-        week_cols = st.columns(7)
         for i, day in enumerate(week):
-            with week_cols[i]:
-                if day == 0:
-                    # 空セル
-                    st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+            if day == 0:
+                calendar_html += '<div class="calendar-cell" style="background: transparent;"></div>'
+            else:
+                day_date = date(st.session_state.cal_month.year, st.session_state.cal_month.month, day)
+                day_str = day_date.isoformat()
+                day_entries = entries[entries['entry_date'] == day_str] if not entries.empty else pd.DataFrame()
+                
+                is_today = day_date == get_today_jst()
+                has_entries = not day_entries.empty
+                
+                # 日付の色
+                day_color = "#dc2626" if i == 0 else "#2563eb" if i == 6 else "#374151"
+                
+                # セルの色
+                if is_today:
+                    bg_color = "#fef3c7"
+                    border = "2px solid #f59e0b"
+                    font_weight = "700"
+                elif has_entries:
+                    bg_color = "#fce7f3"
+                    border = "2px solid #f472b6"
+                    font_weight = "600"
                 else:
-                    day_date = date(st.session_state.cal_month.year, st.session_state.cal_month.month, day)
-                    day_str = day_date.isoformat()
-                    day_entries = entries[entries['entry_date'] == day_str] if not entries.empty else pd.DataFrame()
-                    
-                    is_today = day_date == get_today_jst()
-                    has_entries = not day_entries.empty
-                    
-                    # スタンプを取得
-                    stamps = ""
-                    if has_entries:
-                        for _, entry in day_entries.iterrows():
-                            if pd.notna(entry['morning_stamp_emoji']):
-                                stamps += str(entry['morning_stamp_emoji'])
-                    
-                    # 日付の色
-                    day_color = "#dc2626" if i == 0 else "#2563eb" if i == 6 else "#374151"
-                    
-                    # ボタン型カード
-                    bg_color = "#fef3c7" if is_today else "#fce7f3" if has_entries else "#f9fafb"
-                    border_color = "#f59e0b" if is_today else "#f472b6" if has_entries else "#e5e7eb"
-                    border_width = "3px" if is_today else "2px" if has_entries else "1px"
-                    
-                    st.markdown(f"""
-                    <div style='
-                        background: {bg_color};
-                        border: {border_width} solid {border_color};
-                        border-radius: 2px;
-                        padding: 0px;
-                        text-align: center;
-                        height: 20px;
-                        display: flex;
-                        justify-content: center;
-                        align-items: center;
-                    '>
-                        <div style='font-weight: {'700' if is_today else '500' if has_entries else '400'}; font-size: 6px; color: {day_color}; line-height: 1;'>{day}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    bg_color = "#f9fafb"
+                    border = "1px solid #e5e7eb"
+                    font_weight = "400"
+                
+                cell_style = f"background: {bg_color}; border: {border}; color: {day_color}; font-weight: {font_weight};"
+                calendar_html += f'<div class="calendar-cell" style="{cell_style}">{day}</div>'
+    
+    calendar_html += "</div>"
+    
+    st.markdown(calendar_html, unsafe_allow_html=True)
     
     st.markdown("---")
     
