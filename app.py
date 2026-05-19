@@ -27,7 +27,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# カスタムCSS（スマホ完全対応版）v1.1
+# カスタムCSS（スマホ完全対応版）v1.2
 st.markdown("""
 <style>
     /* 全デバイス共通: 2カラムレイアウト */
@@ -153,13 +153,18 @@ st.markdown("""
         }
     }
     
-    /* タブナビゲーション v1.1 - 統一サイズ */
+    /* タブナビゲーション v1.2 - 完全オーバーレイ */
+    .tab-nav-wrapper {
+        position: relative;
+        width: 100%;
+        margin-bottom: 16px;
+    }
     .tab-nav-grid {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 6px;
         width: 100%;
-        margin-bottom: 8px;
+        pointer-events: none;
     }
     .tab-nav-item {
         aspect-ratio: 1;
@@ -200,13 +205,16 @@ st.markdown("""
         line-height: 1;
     }
     
-    /* 隠しボタングリッド */
+    /* 隠しボタングリッド - absoluteで完全に重ねる */
     .tab-btn-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 6px;
-        margin-top: -8px;
-        margin-bottom: 8px;
+        z-index: 10;
     }
     .tab-btn-container .stButton {
         aspect-ratio: 1;
@@ -214,11 +222,12 @@ st.markdown("""
     .tab-btn-container .stButton > button {
         height: 100%;
         width: 100%;
-        opacity: 0.01;
+        opacity: 0;
         background: transparent !important;
         border: none !important;
         padding: 0 !important;
         min-height: 0 !important;
+        cursor: pointer !important;
     }
     
     @media (max-width: 320px) {
@@ -228,6 +237,32 @@ st.markdown("""
         .tab-nav-label {
             font-size: 9px;
         }
+    }
+    
+    /* スタンプボタンのオーバーレイ修正 */
+    .stamp-wrapper {
+        position: relative;
+        width: 100%;
+    }
+    .stamp-display {
+        pointer-events: none;
+    }
+    .stamp-btn-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 10;
+    }
+    .stamp-btn-overlay .stButton > button {
+        height: 100%;
+        width: 100%;
+        opacity: 0;
+        background: transparent !important;
+        border: none !important;
+        padding: 0 !important;
+        cursor: pointer !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -696,7 +731,7 @@ def show_stamp_button(stamp, key_prefix, current_selection=None):
     """
     
     button_html = f"""
-    <div style="
+    <div class="stamp-display" style="
         {button_style}
         border-radius: 16px;
         padding: 12px 8px;
@@ -805,6 +840,9 @@ tabs = [
     {"key": "settings", "emoji": "⚙️", "label": "設定"}
 ]
 
+# ラッパーで囲む
+st.markdown('<div class="tab-nav-wrapper">', unsafe_allow_html=True)
+
 # HTMLでタブを表示（見た目）
 tab_grid_html = '<div class="tab-nav-grid">'
 for tab in tabs:
@@ -816,7 +854,7 @@ for tab in tabs:
 tab_grid_html += '</div>'
 st.markdown(tab_grid_html, unsafe_allow_html=True)
 
-# 隠しボタンでクリック検知
+# 隠しボタンでクリック検知（absoluteで完全に重ねる）
 st.markdown('<div class="tab-btn-container">', unsafe_allow_html=True)
 cols = st.columns(4)
 for i, tab in enumerate(tabs):
@@ -825,6 +863,9 @@ for i, tab in enumerate(tabs):
         if st.button("　", key=button_key, use_container_width=True):
             st.session_state.tab = tab["key"]
             st.rerun()
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ラッパー終了
 st.markdown('</div>', unsafe_allow_html=True)
 
 # ===== ホームタブ =====
