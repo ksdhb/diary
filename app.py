@@ -147,11 +147,18 @@ st.markdown("""
     
     /* タブナビゲーション（常に横並び） */
     .tab-navigation {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 4px;
         width: 100%;
         margin-bottom: 16px;
+    }
+    /* Streamlitのcolumnsコンテナを強制的に横並びに */
+    .tab-navigation [data-testid="stHorizontalBlock"] {
+        display: flex !important;
+        flex-direction: row !important;
+        gap: 4px !important;
+    }
+    .tab-navigation [data-testid="stHorizontalBlock"] > div {
+        flex: 1 !important;
+        min-width: 0 !important;
     }
     .tab-navigation .stButton > button {
         padding: 8px 4px;
