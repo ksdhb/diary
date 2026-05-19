@@ -151,8 +151,12 @@ st.markdown("""
 CONDITION_STAMPS = [
     {"emoji": "🤩", "label": "最高!"},
     {"emoji": "😊", "label": "良い"},
+    {"emoji": "😄", "label": "元気"},
+    {"emoji": "😌", "label": "まあまあ"},
     {"emoji": "😐", "label": "普通"},
+    {"emoji": "😪", "label": "眠い"},
     {"emoji": "😔", "label": "微妙"},
+    {"emoji": "😷", "label": "体調悪い"},
 ]
 
 MOOD_STAMPS = [
