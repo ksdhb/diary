@@ -944,26 +944,39 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# タブナビゲーション（常に横並び）
-st.markdown('<div class="tab-navigation">', unsafe_allow_html=True)
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    if st.button("🏠 ホーム", key="tab_home", use_container_width=True):
-        st.session_state.tab = "home"
-        st.rerun()
-with col2:
-    if st.button("📅 カレンダー", key="tab_calendar", use_container_width=True):
-        st.session_state.tab = "calendar"
-        st.rerun()
-with col3:
-    if st.button("📖 履歴", key="tab_history", use_container_width=True):
-        st.session_state.tab = "history"
-        st.rerun()
-with col4:
-    if st.button("⚙️ 設定", key="tab_settings", use_container_width=True):
-        st.session_state.tab = "settings"
-        st.rerun()
-st.markdown('</div>', unsafe_allow_html=True)
+# タブナビゲーション（HTML/CSS Grid実装 - モバイル対応）
+# URLパラメータからタブを取得
+query_params = st.query_params
+if "tab" in query_params:
+    new_tab = query_params["tab"]
+    if new_tab in ["home", "calendar", "history", "settings"]:
+        st.session_state.tab = new_tab
+    st.query_params.clear()
+
+# タブボタンHTML
+tab_home_class = "active" if st.session_state.tab == "home" else ""
+tab_cal_class = "active" if st.session_state.tab == "calendar" else ""
+tab_hist_class = "active" if st.session_state.tab == "history" else ""
+tab_set_class = "active" if st.session_state.tab == "settings" else ""
+
+tabs_html = f'''
+<div class="tab-nav-grid">
+    <form action="" method="get" style="margin: 0;">
+        <button type="submit" name="tab" value="home" class="tab-nav-button {tab_home_class}">&#127968; ホーム</button>
+    </form>
+    <form action="" method="get" style="margin: 0;">
+        <button type="submit" name="tab" value="calendar" class="tab-nav-button {tab_cal_class}">&#128197; カレンダー</button>
+    </form>
+    <form action="" method="get" style="margin: 0;">
+        <button type="submit" name="tab" value="history" class="tab-nav-button {tab_hist_class}">&#128214; 履歴</button>
+    </form>
+    <form action="" method="get" style="margin: 0;">
+        <button type="submit" name="tab" value="settings" class="tab-nav-button {tab_set_class}">&#9881;&#65039; 設定</button>
+    </form>
+</div>
+'''
+
+st.markdown(tabs_html, unsafe_allow_html=True)
 
 st.markdown("---")
 
