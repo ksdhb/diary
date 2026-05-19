@@ -144,6 +144,20 @@ st.markdown("""
             color: #e5e7eb;
         }
     }
+    
+    /* タブナビゲーション（常に横並び） */
+    .tab-navigation {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
+        width: 100%;
+        margin-bottom: 16px;
+    }
+    .tab-navigation .stButton > button {
+        padding: 8px 4px;
+        font-size: 11px;
+        white-space: nowrap;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -642,11 +656,16 @@ if st.session_state.get('screen') == 'post_morning':
     st.markdown("---")
     st.markdown("### スタンプを選択")
     
-    cols = st.columns(4)
-    for i, stamp in enumerate(CONDITION_STAMPS):
-        with cols[i]:
-            if st.button(f"{stamp['emoji']}\n{stamp['label']}", key=f"morning_{i}", use_container_width=True):
-                st.session_state.selected_morning_stamp = stamp
+    # 2行4列でスタンプを表示
+    for row in range(2):
+        cols = st.columns(4)
+        for col in range(4):
+            i = row * 4 + col
+            if i < len(CONDITION_STAMPS):
+                stamp = CONDITION_STAMPS[i]
+                with cols[col]:
+                    if st.button(f"{stamp['emoji']}\n{stamp['label']}", key=f"morning_{i}", use_container_width=True):
+                        st.session_state.selected_morning_stamp = stamp
     
     if 'selected_morning_stamp' in st.session_state:
         st.success(f"選択中: {st.session_state.selected_morning_stamp['emoji']} {st.session_state.selected_morning_stamp['label']}")
@@ -756,11 +775,16 @@ elif st.session_state.get('screen') == 'edit_morning':
     current_entry = entries[entries['id'] == entry_id].iloc[0]
     
     st.markdown("### スタンプを選択")
-    cols = st.columns(4)
-    for i, stamp in enumerate(CONDITION_STAMPS):
-        with cols[i]:
-            if st.button(f"{stamp['emoji']}\n{stamp['label']}", key=f"edit_morning_{i}", use_container_width=True):
-                st.session_state.selected_morning_stamp = stamp
+    # 2行4列でスタンプを表示
+    for row in range(2):
+        cols = st.columns(4)
+        for col in range(4):
+            i = row * 4 + col
+            if i < len(CONDITION_STAMPS):
+                stamp = CONDITION_STAMPS[i]
+                with cols[col]:
+                    if st.button(f"{stamp['emoji']}\n{stamp['label']}", key=f"edit_morning_{i}", use_container_width=True):
+                        st.session_state.selected_morning_stamp = stamp
     
     if 'selected_morning_stamp' not in st.session_state and pd.notna(current_entry['morning_stamp_emoji']):
         for stamp in CONDITION_STAMPS:
@@ -913,24 +937,26 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# タブナビゲーション
-tab_col1, tab_col2, tab_col3, tab_col4 = st.columns(4)
-with tab_col1:
-    if st.button("🏠 ホーム"):
+# タブナビゲーション（常に横並び）
+st.markdown('<div class="tab-navigation">', unsafe_allow_html=True)
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    if st.button("🏠 ホーム", key="tab_home", use_container_width=True):
         st.session_state.tab = "home"
         st.rerun()
-with tab_col2:
-    if st.button("📅 カレンダー"):
+with col2:
+    if st.button("📅 カレンダー", key="tab_calendar", use_container_width=True):
         st.session_state.tab = "calendar"
         st.rerun()
-with tab_col3:
-    if st.button("📖 履歴"):
+with col3:
+    if st.button("📖 履歴", key="tab_history", use_container_width=True):
         st.session_state.tab = "history"
         st.rerun()
-with tab_col4:
-    if st.button("⚙️ 設定"):
+with col4:
+    if st.button("⚙️ 設定", key="tab_settings", use_container_width=True):
         st.session_state.tab = "settings"
         st.rerun()
+st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 
