@@ -145,42 +145,71 @@ st.markdown("""
         }
     }
     
-    /* タブナビゲーション（超強力横並び固定） */
-    .tab-navigation {
+    /* タブナビゲーション（CSS Grid - 正方形ボタン） */
+    .tab-nav-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
         width: 100%;
-        margin-bottom: 16px;
-        overflow: visible !important;
+        margin-bottom: 8px;
     }
-    /* 全ての画面サイズで強制的に横並び */
-    .tab-navigation [data-testid="stHorizontalBlock"] {
-        display: flex !important;
-        flex-direction: row !important;
-        flex-wrap: nowrap !important;
-        gap: 4px !important;
-        width: 100% !important;
+    .tab-nav-item {
+        aspect-ratio: 1;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 700;
+        transition: all 0.2s ease;
+        background: white;
+        border: 2px solid #e5e7eb;
+        color: #374151;
+        flex-direction: column;
+        gap: 2px;
+        padding: 8px;
+        text-align: center;
+        line-height: 1.2;
     }
-    .tab-navigation [data-testid="stHorizontalBlock"] > div {
-        flex: 0 0 calc(25% - 3px) !important;
-        min-width: 70px !important;
-        max-width: 25% !important;
-        flex-shrink: 0 !important;
+    .tab-nav-item.active {
+        background: linear-gradient(135deg, #f472b6, #ec4899);
+        color: white;
+        border-color: #ec4899;
     }
-    .tab-navigation .stButton {
-        width: 100% !important;
+    .tab-nav-emoji {
+        font-size: 20px;
     }
-    .tab-navigation .stButton > button {
-        width: 100% !important;
-        padding: 10px 4px !important;
-        font-size: 11px !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
+    .tab-nav-label {
+        font-size: 10px;
     }
-    /* 320px以下でもタブは横並び（フォントサイズだけ調整） */
+    
+    /* 隠しボタングリッド */
+    .tab-btn-container {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
+        margin-top: -8px;
+        margin-bottom: 8px;
+    }
+    .tab-btn-container .stButton {
+        aspect-ratio: 1;
+    }
+    .tab-btn-container .stButton > button {
+        height: 100%;
+        width: 100%;
+        opacity: 0.01;
+        background: transparent !important;
+        border: none !important;
+        padding: 0 !important;
+        min-height: 0 !important;
+    }
+    
     @media (max-width: 320px) {
-        .tab-navigation .stButton > button {
-            font-size: 9px !important;
-            padding: 8px 2px !important;
+        .tab-nav-emoji {
+            font-size: 18px;
+        }
+        .tab-nav-label {
+            font-size: 9px;
         }
     }
 </style>
@@ -962,25 +991,36 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# タブナビゲーション（超強力CSS版 - 全デバイス対応）
-st.markdown('<div class="tab-navigation">', unsafe_allow_html=True)
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    if st.button("🏠 ホーム", key="tab_home", use_container_width=True):
-        st.session_state.tab = "home"
-        st.rerun()
-with col2:
-    if st.button("📅 カレンダー", key="tab_calendar", use_container_width=True):
-        st.session_state.tab = "calendar"
-        st.rerun()
-with col3:
-    if st.button("📖 履歴", key="tab_history", use_container_width=True):
-        st.session_state.tab = "history"
-        st.rerun()
-with col4:
-    if st.button("⚙️ 設定", key="tab_settings", use_container_width=True):
-        st.session_state.tab = "settings"
-        st.rerun()
+# タブナビゲーション（CSS Grid - 正方形ボタン）
+tabs = [
+    {"key": "home", "emoji": "🏠", "label": "ホーム"},
+    {"key": "calendar", "emoji": "📅", "label": "カレンダー"},
+    {"key": "history", "emoji": "📖", "label": "履歴"},
+    {"key": "settings", "emoji": "⚙️", "label": "設定"}
+]
+
+tab_grid_html = '<div class="tab-nav-grid">'
+for tab in tabs:
+    active_class = "active" if st.session_state.tab == tab["key"] else ""
+    tab_grid_html += f'''
+    <div class="tab-nav-item {active_class}">
+        <div class="tab-nav-emoji">{tab["emoji"]}</div>
+        <div class="tab-nav-label">{tab["label"]}</div>
+    </div>
+    '''
+tab_grid_html += '</div>'
+
+st.markdown(tab_grid_html, unsafe_allow_html=True)
+
+# 非表示の切り替えボタン（実際のクリックハンドラー）
+st.markdown('<div class="tab-btn-container">', unsafe_allow_html=True)
+cols = st.columns(4)
+for i, tab in enumerate(tabs):
+    with cols[i]:
+        button_key = f"tab_{tab['key']}_btn"
+        if st.button("　", key=button_key, use_container_width=True):
+            st.session_state.tab = tab["key"]
+            st.rerun()
 st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown("---")
