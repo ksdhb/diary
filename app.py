@@ -1157,6 +1157,7 @@ elif st.session_state.tab == "calendar":
     st.markdown("---")
     
     # 今月のエントリーを取得
+    calendar.setfirstweekday(calendar.SUNDAY)  # 日曜日始まり（日本標準）
     cal = calendar.monthcalendar(st.session_state.cal_month.year, st.session_state.cal_month.month)
     
     # カレンダーHTMLを構築（CSS Grid使用）
