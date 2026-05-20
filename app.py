@@ -762,49 +762,45 @@ elif st.session_state.tab == 'calendar':
     month = st.session_state.cal_month
     cal = calendar.monthcalendar(year, month)
 
-    weekdays = ["月", "火", "水", "木", "金", "土", "日"]
-    header_html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin:12px 0 8px;">'
-    for day in weekdays:
-        header_html += f'<div style="text-align:center;font-weight:700;color:#ec4899;padding:4px;">{day}</div>'
-    header_html += '</div>'
-    st.markdown(header_html, unsafe_allow_html=True)
-
+    # カレンダー全体をHTML gridで描画（st.columnsをループで使うとレイアウト崩れのため）
+    cal_html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin:8px 0;">'
+    for day_name in ["月", "火", "水", "木", "金", "土", "日"]:
+        cal_html += f'<div style="text-align:center;font-weight:700;color:#ec4899;padding:4px;">{day_name}</div>'
     for week in cal:
-        cols = st.columns(7)
-        for i, day in enumerate(week):
-            with cols[i]:
-                if day == 0:
-                    st.markdown('<div style="height:60px;"></div>', unsafe_allow_html=True)
-                else:
-                    day_date = date(year, month, day)
-                    day_entries = entries_df[
-                        (entries_df['user_id'] == current_user) &
-                        (entries_df['entry_date'] == day_date)
-                    ]
-                    has_entry = not day_entries.empty and (
-                        day_entries.iloc[0]['morning_stamp_emoji'] or
-                        day_entries.iloc[0]['evening_stamp_emoji']
-                    )
-                    is_today = day_date == today
-                    bg_color = "#fce7f3" if has_entry else "#f9fafb"
-                    border = "2px solid #ec4899" if is_today else "1px solid #e5e7eb"
-                    cell_html = f"""
-                    <div style="background:{bg_color};border:{border};border-radius:8px;padding:8px;
-                        height:60px;display:flex;flex-direction:column;align-items:center;
-                        justify-content:center;font-size:14px;
-                        font-weight:{'700' if is_today else '400'};
-                        color:{'#ec4899' if is_today else '#374151'};">
-                        <div>{day}</div>"""
-                    if has_entry:
-                        entry = day_entries.iloc[0]
-                        emojis = []
-                        if entry['morning_stamp_emoji']:
-                            emojis.append(entry['morning_stamp_emoji'])
-                        if entry['evening_stamp_emoji']:
-                            emojis.append(entry['evening_stamp_emoji'])
-                        cell_html += f'<div style="font-size:16px;margin-top:2px;">{"".join(emojis)}</div>'
-                    cell_html += "</div>"
-                    st.markdown(cell_html, unsafe_allow_html=True)
+        for day in week:
+            if day == 0:
+                cal_html += '<div style="height:60px;"></div>'
+            else:
+                day_date = date(year, month, day)
+                day_entries = entries_df[
+                    (entries_df['user_id'] == current_user) &
+                    (entries_df['entry_date'] == day_date)
+                ]
+                has_entry = not day_entries.empty and (
+                    day_entries.iloc[0]['morning_stamp_emoji'] or
+                    day_entries.iloc[0]['evening_stamp_emoji']
+                )
+                is_today = day_date == today
+                bg = "#fce7f3" if has_entry else "#f9fafb"
+                bdr = "2px solid #ec4899" if is_today else "1px solid #e5e7eb"
+                fw = "700" if is_today else "400"
+                clr = "#ec4899" if is_today else "#374151"
+                emoji_html = ""
+                if has_entry:
+                    e = day_entries.iloc[0]
+                    emojis = []
+                    if e['morning_stamp_emoji']: emojis.append(e['morning_stamp_emoji'])
+                    if e['evening_stamp_emoji']: emojis.append(e['evening_stamp_emoji'])
+                    joined = "".join(emojis)
+                    emoji_html = f'<div style="font-size:13px;margin-top:2px;">{joined}</div>'
+                cal_html += (
+                    f'<div style="background:{bg};border:{bdr};border-radius:8px;padding:4px;' +
+                    f'height:60px;display:flex;flex-direction:column;align-items:center;' +
+                    f'justify-content:center;font-size:13px;font-weight:{fw};color:{clr};">' +
+                    f'<div>{day}</div>{emoji_html}</div>'
+                )
+    cal_html += '</div>'
+    st.markdown(cal_html, unsafe_allow_html=True)
 
 
 # ===== 履歴タブ =====
@@ -842,6 +838,7 @@ elif st.session_state.tab == 'history':
             entry_avatar = settings.get(f'user_{entry_user.lower()}_avatar', '👤')
             entry_date = entry['entry_date']
 
+            fav_star = '<div style="font-size:18px;">⭐</div>' if entry['is_favorite'] else ''
             card_html = f"""
             <div class="card">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
@@ -850,10 +847,11 @@ elif st.session_state.tab == 'history':
                         <div style="font-weight:700;color:#374151;">{entry_name}</div>
                         <div style="font-size:12px;color:#9ca3af;">{entry_date}</div>
                     </div>
-                    {'<div style="font-size:18px;">⭐</div>' if entry['is_favorite'] else ''}
+                    {fav_star}
                 </div>"""
 
             if entry['morning_stamp_emoji']:
+                morning_msg = entry['morning_message'] if entry['morning_message'] else ''
                 card_html += f"""
                 <div style="margin-bottom:12px;">
                     <div style="font-size:12px;color:#9ca3af;margin-bottom:4px;">☀️ 朝</div>
@@ -861,12 +859,13 @@ elif st.session_state.tab == 'history':
                         <div style="font-size:32px;">{entry['morning_stamp_emoji']}</div>
                         <div>
                             <div style="font-weight:700;color:#ec4899;">{entry['morning_stamp_label']}</div>
-                            <div style="color:#6b7280;font-size:14px;">{entry['morning_message'] if entry['morning_message'] else ''}</div>
+                            <div style="color:#6b7280;font-size:14px;">{morning_msg}</div>
                         </div>
                     </div>
                 </div>"""
 
             if entry['evening_stamp_emoji']:
+                diary_text = entry['evening_diary_text'] if entry['evening_diary_text'] else ''
                 card_html += f"""
                 <div>
                     <div style="font-size:12px;color:#9ca3af;margin-bottom:4px;">🌙 夜</div>
@@ -874,7 +873,7 @@ elif st.session_state.tab == 'history':
                         <div style="font-size:32px;">{entry['evening_stamp_emoji']}</div>
                         <div style="font-weight:700;color:#ec4899;">{entry['evening_stamp_label']}</div>
                     </div>
-                    <div style="color:#374151;white-space:pre-wrap;font-size:14px;margin-bottom:8px;">{entry['evening_diary_text'] if entry['evening_diary_text'] else ''}</div>"""
+                    <div style="color:#374151;white-space:pre-wrap;font-size:14px;margin-bottom:8px;">{diary_text}</div>"""
                 if entry['image_data']:
                     card_html += f"""
                     <div style="text-align:center;margin-bottom:8px;">
