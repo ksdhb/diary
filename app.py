@@ -837,66 +837,9 @@ elif st.session_state.tab == 'history':
             entry_name = settings.get(f'user_{entry_user.lower()}_name', f'ユーザー{entry_user}')
             entry_avatar = settings.get(f'user_{entry_user.lower()}_avatar', '👤')
             entry_date = entry['entry_date']
-
-            fav_star = '<div style="font-size:18px;">⭐</div>' if entry['is_favorite'] else ''
-            card_html = f"""
-            <div class="card">
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-                    <div style="font-size:24px;">{entry_avatar}</div>
-                    <div style="flex:1;">
-                        <div style="font-weight:700;color:#374151;">{entry_name}</div>
-                        <div style="font-size:12px;color:#9ca3af;">{entry_date}</div>
-                    </div>
-                    {fav_star}
-                </div>"""
-
-            if entry['morning_stamp_emoji']:
-                morning_msg = entry['morning_message'] if entry['morning_message'] else ''
-                card_html += f"""
-                <div style="margin-bottom:12px;">
-                    <div style="font-size:12px;color:#9ca3af;margin-bottom:4px;">☀️ 朝</div>
-                    <div style="display:flex;align-items:center;gap:8px;">
-                        <div style="font-size:32px;">{entry['morning_stamp_emoji']}</div>
-                        <div>
-                            <div style="font-weight:700;color:#ec4899;">{entry['morning_stamp_label']}</div>
-                            <div style="color:#6b7280;font-size:14px;">{morning_msg}</div>
-                        </div>
-                    </div>
-                </div>"""
-
-            if entry['evening_stamp_emoji']:
-                diary_text = entry['evening_diary_text'] if entry['evening_diary_text'] else ''
-                card_html += f"""
-                <div>
-                    <div style="font-size:12px;color:#9ca3af;margin-bottom:4px;">🌙 夜</div>
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                        <div style="font-size:32px;">{entry['evening_stamp_emoji']}</div>
-                        <div style="font-weight:700;color:#ec4899;">{entry['evening_stamp_label']}</div>
-                    </div>
-                    <div style="color:#374151;white-space:pre-wrap;font-size:14px;margin-bottom:8px;">{diary_text}</div>"""
-                if entry['image_data']:
-                    card_html += f"""
-                    <div style="text-align:center;margin-bottom:8px;">
-                        <img src="data:image/jpeg;base64,{entry['image_data']}"
-                             style="max-width:100%;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-                    </div>"""
-                card_html += "</div>"
-
-            card_html += "</div>"
-            st.markdown(card_html, unsafe_allow_html=True)
-
-            # ---- アクションボタン ----
-            # 自分のエントリーかどうかで列数を変える
             is_my_entry = (entry_user == current_user)
-            btn_cols = st.columns(3 if is_my_entry else 2)
 
-            with btn_cols[0]:
-                fav_label = "⭐ 解除" if entry['is_favorite'] else "⭐ お気に入り"
-                if st.button(fav_label, key=f"fav_{entry['id']}", use_container_width=True):
-                    if toggle_favorite(entry_user, entry_date):
-                        st.rerun()
-
-            # コメント数の安全な取得
+            # コメント数を先に取得
             if not comments_df.empty and 'entry_id' in comments_df.columns:
                 entry_comments_df = comments_df[comments_df['entry_id'] == entry['id']]
                 comment_count = len(entry_comments_df)
@@ -904,73 +847,113 @@ elif st.session_state.tab == 'history':
                 entry_comments_df = pd.DataFrame(columns=['id', 'entry_id', 'user_id', 'comment_text', 'created_at'])
                 comment_count = 0
 
-            with btn_cols[1]:
-                if st.button(f"💬 コメント ({comment_count})", key=f"comment_btn_{entry['id']}", use_container_width=True):
-                    key = f'show_comments_{entry["id"]}'
-                    st.session_state[key] = not st.session_state.get(key, False)
-                    st.rerun()
+            # ---- カード（st.containerで描画） ----
+            with st.container(border=True):
+                # ヘッダー行
+                h_col1, h_col2 = st.columns([1, 6])
+                with h_col1:
+                    st.markdown(f"<div style='font-size:28px;'>{entry_avatar}</div>", unsafe_allow_html=True)
+                with h_col2:
+                    fav_icon = " ⭐" if entry['is_favorite'] else ""
+                    st.markdown(f"**{entry_name}{fav_icon}**")
+                    st.caption(str(entry_date))
 
-            if is_my_entry:
-                with btn_cols[2]:
-                    if st.button("🗑️ 削除", key=f"delete_{entry['id']}", use_container_width=True):
-                        st.session_state[f'confirm_delete_{entry["id"]}'] = True
+                # 朝の記録
+                if entry['morning_stamp_emoji']:
+                    st.markdown("☀️ **朝**")
+                    m_col1, m_col2 = st.columns([1, 5])
+                    with m_col1:
+                        st.markdown(f"<div style='font-size:32px;'>{entry['morning_stamp_emoji']}</div>", unsafe_allow_html=True)
+                    with m_col2:
+                        st.markdown(f"**{entry['morning_stamp_label']}**")
+                        if entry['morning_message']:
+                            st.markdown(entry['morning_message'])
+
+                # 夜の記録
+                if entry['evening_stamp_emoji']:
+                    st.markdown("🌙 **夜**")
+                    e_col1, e_col2 = st.columns([1, 5])
+                    with e_col1:
+                        st.markdown(f"<div style='font-size:32px;'>{entry['evening_stamp_emoji']}</div>", unsafe_allow_html=True)
+                    with e_col2:
+                        st.markdown(f"**{entry['evening_stamp_label']}**")
+                    if entry['evening_diary_text']:
+                        st.markdown(entry['evening_diary_text'])
+                    if entry['image_data']:
+                        st.markdown(
+                            f'<img src="data:image/jpeg;base64,{entry["image_data"]}" '
+                            f'style="max-width:100%;border-radius:12px;margin-top:8px;">',
+                            unsafe_allow_html=True
+                        )
+
+                # ---- アクションボタン ----
+                btn_cols = st.columns(3 if is_my_entry else 2)
+                with btn_cols[0]:
+                    fav_label = "⭐ 解除" if entry['is_favorite'] else "⭐ お気に入り"
+                    if st.button(fav_label, key=f"fav_{entry['id']}", use_container_width=True):
+                        if toggle_favorite(entry_user, entry_date):
+                            st.rerun()
+                with btn_cols[1]:
+                    if st.button(f"💬 コメント ({comment_count})", key=f"comment_btn_{entry['id']}", use_container_width=True):
+                        ckey = f'show_comments_{entry["id"]}'
+                        st.session_state[ckey] = not st.session_state.get(ckey, False)
                         st.rerun()
+                if is_my_entry:
+                    with btn_cols[2]:
+                        if st.button("🗑️ 削除", key=f"delete_{entry['id']}", use_container_width=True):
+                            st.session_state[f'confirm_delete_{entry["id"]}'] = True
+                            st.rerun()
 
-            # 削除確認
-            if st.session_state.get(f'confirm_delete_{entry["id"]}', False):
-                st.warning("本当に削除しますか？この操作は取り消せません。")
-                dc1, dc2 = st.columns(2)
-                with dc1:
-                    if st.button("✅ はい、削除する", key=f"confirm_yes_{entry['id']}", use_container_width=True, type="primary"):
-                        if delete_full_entry(entry['id']):
-                            st.success("削除しました")
+                # 削除確認
+                if st.session_state.get(f'confirm_delete_{entry["id"]}', False):
+                    st.warning("本当に削除しますか？この操作は取り消せません。")
+                    dc1, dc2 = st.columns(2)
+                    with dc1:
+                        if st.button("✅ はい、削除する", key=f"confirm_yes_{entry['id']}", use_container_width=True, type="primary"):
+                            if delete_full_entry(entry['id']):
+                                st.success("削除しました")
+                                st.session_state.pop(f'confirm_delete_{entry["id"]}', None)
+                                st.rerun()
+                    with dc2:
+                        if st.button("❌ キャンセル", key=f"confirm_no_{entry['id']}", use_container_width=True):
                             st.session_state.pop(f'confirm_delete_{entry["id"]}', None)
                             st.rerun()
-                with dc2:
-                    if st.button("❌ キャンセル", key=f"confirm_no_{entry['id']}", use_container_width=True):
-                        st.session_state.pop(f'confirm_delete_{entry["id"]}', None)
-                        st.rerun()
 
-            # ---- コメントセクション ----
-            if st.session_state.get(f'show_comments_{entry["id"]}', False):
-                st.markdown("---")
-                st.markdown("**💬 コメント**")
+                # ---- コメントセクション ----
+                if st.session_state.get(f'show_comments_{entry["id"]}', False):
+                    st.markdown("---")
+                    st.markdown("**💬 コメント**")
 
-                # コメント一覧表示（自分のコメントには削除ボタン）
-                if not entry_comments_df.empty:
-                    for _, comment in entry_comments_df.sort_values('created_at').iterrows():
-                        comment_user = comment['user_id']
-                        comment_name = settings.get(f'user_{comment_user.lower()}_name', f'ユーザー{comment_user}')
-                        comment_avatar = settings.get(f'user_{comment_user.lower()}_avatar', '👤')
-                        st.markdown(f"""
-                        <div class="comment-box">
-                            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-                                <div style="font-size:16px;">{comment_avatar}</div>
-                                <div style="font-size:12px;font-weight:700;color:#374151;">{comment_name}</div>
-                            </div>
-                            <div style="font-size:14px;color:#374151;">{comment['comment_text']}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        # 自分のコメントのみ削除可能
-                        if comment_user == current_user:
-                            if st.button("🗑️ コメント削除", key=f"del_comment_{comment['id']}", use_container_width=False):
-                                if delete_comment(comment['id']):
-                                    st.rerun()
+                    if not entry_comments_df.empty:
+                        for _, comment in entry_comments_df.sort_values('created_at').iterrows():
+                            comment_user = comment['user_id']
+                            comment_name = settings.get(f'user_{comment_user.lower()}_name', f'ユーザー{comment_user}')
+                            comment_avatar = settings.get(f'user_{comment_user.lower()}_avatar', '👤')
+                            with st.container(border=True):
+                                cc1, cc2 = st.columns([1, 8])
+                                with cc1:
+                                    st.markdown(f"<div style='font-size:20px;'>{comment_avatar}</div>", unsafe_allow_html=True)
+                                with cc2:
+                                    st.markdown(f"**{comment_name}**")
+                                    st.markdown(comment['comment_text'])
+                                if comment_user == current_user:
+                                    if st.button("🗑️ コメント削除", key=f"del_comment_{comment['id']}"):
+                                        if delete_comment(comment['id']):
+                                            st.rerun()
 
-                # コメント追加フォーム
-                new_comment = st.text_area(
-                    "コメントを追加",
-                    key=f"new_comment_{entry['id']}",
-                    placeholder="コメントを書いてね",
-                    height=60
-                )
-                if st.button("送信", key=f"send_comment_{entry['id']}", type="primary"):
-                    if new_comment.strip():
-                        if add_comment(entry['id'], current_user, new_comment):
-                            st.success("コメントを追加しました")
-                            st.rerun()
-                    else:
-                        st.warning("コメントを入力してください")
+                    new_comment = st.text_area(
+                        "コメントを追加",
+                        key=f"new_comment_{entry['id']}",
+                        placeholder="コメントを書いてね",
+                        height=60
+                    )
+                    if st.button("送信", key=f"send_comment_{entry['id']}", type="primary"):
+                        if new_comment.strip():
+                            if add_comment(entry['id'], current_user, new_comment):
+                                st.success("コメントを追加しました")
+                                st.rerun()
+                        else:
+                            st.warning("コメントを入力してください")
 
 
 # ===== 設定タブ =====
