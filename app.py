@@ -71,6 +71,13 @@ st.markdown("""
         margin: 8px 0;
         border-left: 3px solid #f472b6;
     }
+    .notif-box {
+        background: linear-gradient(135deg, rgba(244,114,182,0.12), rgba(236,72,153,0.08));
+        border-radius: 14px;
+        padding: 12px 14px;
+        margin: 8px 0;
+        border: 1.5px solid rgba(244,114,182,0.35);
+    }
     .header-container {
         background: linear-gradient(135deg, #f472b6, #ec4899);
         padding: 14px 18px;
@@ -94,6 +101,7 @@ st.markdown("""
     @media (prefers-color-scheme: dark) {
         .card { background: rgba(30,30,30,0.95); color: #e5e7eb; }
         .comment-box { background: #1f2937; color: #e5e7eb; }
+        .notif-box { background: rgba(244,114,182,0.08); }
     }
     .tab-nav-container div[data-testid="column"] { padding: 0 3px !important; }
     .tab-nav-container .stButton > button {
@@ -123,6 +131,16 @@ st.markdown("""
         flex-direction: column !important;
         justify-content: center !important;
         align-items: center !important;
+    }
+    .user-select-card {
+        background: white;
+        border-radius: 20px;
+        padding: 24px;
+        text-align: center;
+        box-shadow: 0 4px 24px rgba(236,72,153,0.15);
+        border: 2px solid rgba(244,114,182,0.2);
+        cursor: pointer;
+        transition: all 0.2s ease;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -165,8 +183,6 @@ def init_gspread():
     spreadsheet_id = "1z2R2Da4CxP4U3Spboz5_R9tkrahgTwGukWaGXjIdjSg"
     return client.open_by_key(spreadsheet_id)
 
-
-# ---- キャッシュTTLをコメントは短く(60秒)、エントリーは120秒に調整 ----
 
 @st.cache_data(ttl=120)
 def load_entries():
@@ -439,15 +455,68 @@ def process_image(uploaded_file):
         return None, None
 
 
+def render_home_comment_section(entry_id, current_user, settings, comments_df, section_key):
+    """ホーム画面用コメントセクション（朝・夜・パートナー共用）"""
+    if not entry_id:
+        return
+    if comments_df.empty or 'entry_id' not in comments_df.columns:
+        entry_comments = pd.DataFrame(columns=['id', 'entry_id', 'user_id', 'comment_text', 'created_at'])
+    else:
+        entry_comments = comments_df[comments_df['entry_id'] == str(entry_id)].copy()
+        if not entry_comments.empty and 'created_at' in entry_comments.columns:
+            entry_comments = entry_comments.sort_values('created_at')
+    comment_count = len(entry_comments)
+
+    show_key = f'show_home_cmt_{section_key}'
+    btn_label = f"💬 コメント ({comment_count})" + (" 🔴" if comment_count > 0 else "")
+    if st.button(btn_label, key=f"cmt_btn_{section_key}", use_container_width=True):
+        st.session_state[show_key] = not st.session_state.get(show_key, False)
+        st.rerun()
+
+    if st.session_state.get(show_key, False):
+        st.markdown("**💬 コメント**")
+        if entry_comments.empty:
+            st.caption("まだコメントはありません")
+        else:
+            for _, cmt in entry_comments.iterrows():
+                cu = cmt['user_id']
+                cn = settings.get(f'user_{cu.lower()}_name', f'ユーザー{cu}')
+                ca = settings.get(f'user_{cu.lower()}_avatar', '👤')
+                with st.container(border=True):
+                    c1, c2 = st.columns([1, 8])
+                    with c1:
+                        st.markdown(f"<div style='font-size:20px;'>{ca}</div>", unsafe_allow_html=True)
+                    with c2:
+                        st.markdown(f"**{cn}**")
+                        st.markdown(cmt['comment_text'])
+                    if cu == current_user:
+                        if st.button("🗑️ 削除", key=f"del_hcmt_{cmt['id']}_{section_key}"):
+                            if delete_comment(cmt['id']):
+                                st.rerun()
+        new_cmt = st.text_area(
+            "コメントを追加",
+            key=f"new_hcmt_{section_key}",
+            placeholder="コメントを書いてね",
+            height=60
+        )
+        if st.button("送信", key=f"send_hcmt_{section_key}", type="primary"):
+            if new_cmt.strip():
+                if add_comment(entry_id, current_user, new_cmt):
+                    st.success("コメントを追加しました")
+                    st.rerun()
+            else:
+                st.warning("コメントを入力してください")
+
+
 # ===== セッション状態の初期化 =====
 defaults = {
     'tab': 'home',
     'current_user': 'A',
+    'user_selected': False,          # ← 追加: セッションごとにユーザー選択を要求
     'show_morning_form': False,
     'show_evening_form': False,
     'selected_morning_stamp': None,
     'selected_evening_stamp': None,
-    # カレンダー用: session_stateで年月を管理
     'cal_year': get_today_jst().year,
     'cal_month': get_today_jst().month,
 }
@@ -465,6 +534,42 @@ if st.session_state.get('last_date') != current_date_str:
 settings = load_settings()
 entries_df = load_entries()
 comments_df = load_comments()
+
+# ===== ユーザー選択画面（セッション開始時に毎回表示） =====
+if not st.session_state.get('user_selected', False):
+    st.markdown("""
+    <div style='text-align:center; padding: 40px 20px 20px;'>
+        <div style='font-size:56px; margin-bottom:12px;'>📔</div>
+        <div style='font-size:22px; font-weight:800; color:#ec4899; margin-bottom:6px;'>ふたりの日記</div>
+        <div style='font-size:14px; color:#9ca3af; margin-bottom:28px;'>あなたはどちらですか？</div>
+    </div>
+    """, unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        _name_a = settings.get('user_a_name', 'ユーザーA')
+        _avatar_a = settings.get('user_a_avatar', '👦')
+        if st.button(
+            f"{_avatar_a}\n{_name_a}",
+            key="select_user_a",
+            use_container_width=True,
+            type="primary"
+        ):
+            st.session_state.current_user = 'A'
+            st.session_state.user_selected = True
+            st.rerun()
+    with col2:
+        _name_b = settings.get('user_b_name', 'ユーザーB')
+        _avatar_b = settings.get('user_b_avatar', '👧')
+        if st.button(
+            f"{_avatar_b}\n{_name_b}",
+            key="select_user_b",
+            use_container_width=True,
+            type="primary"
+        ):
+            st.session_state.current_user = 'B'
+            st.session_state.user_selected = True
+            st.rerun()
+    st.stop()
 
 # ===== ヘッダー =====
 current_user = get_current_user()
@@ -528,6 +633,35 @@ if st.session_state.tab == 'home':
 
     partner_name = settings.get(f'user_{partner_user.lower()}_name', f'ユーザー{partner_user}')
 
+    # ===== パートナーからのコメント通知 =====
+    my_all_entries = entries_df[entries_df['user_id'] == current_user]
+    if not my_all_entries.empty and not comments_df.empty and 'entry_id' in comments_df.columns:
+        my_entry_ids = my_all_entries['id'].astype(str).tolist()
+        received_comments = comments_df[
+            (comments_df['entry_id'].astype(str).isin(my_entry_ids)) &
+            (comments_df['user_id'] != current_user)
+        ]
+        if not received_comments.empty:
+            st.markdown(f"### 💌 {partner_name}からのコメント")
+            # 新しい順に最大5件表示
+            display_comments = received_comments.sort_values('created_at', ascending=False).head(5)
+            for _, cmt in display_comments.iterrows():
+                cu = cmt['user_id']
+                ca = settings.get(f'user_{cu.lower()}_avatar', '👤')
+                # 対応するエントリーの日付を取得
+                cmt_entry = my_all_entries[my_all_entries['id'].astype(str) == str(cmt['entry_id'])]
+                entry_date_str = str(cmt_entry.iloc[0]['entry_date']) if not cmt_entry.empty else ''
+                st.markdown(f"""
+                <div class="notif-box">
+                    <span style='font-size:18px;'>{ca}</span>
+                    <strong style='color:#ec4899;'> {partner_name}</strong>
+                    <span style='color:#9ca3af; font-size:11px;'> {entry_date_str}</span><br>
+                    <span style='color:#374151;'>{cmt['comment_text']}</span>
+                </div>
+                """, unsafe_allow_html=True)
+            st.markdown("---")
+
+    # ===== パートナーの今日 =====
     st.markdown(f"### 💕 {partner_name}の今日")
 
     if has_partner_morning or has_partner_evening:
@@ -556,6 +690,14 @@ if st.session_state.tab == 'home':
             </div>"""
         card_html += '</div>'
         st.markdown(card_html, unsafe_allow_html=True)
+
+        # パートナーのエントリーへのコメントボタン（朝・夜どちらでも）
+        partner_entry_id = str(partner_data.get('id', ''))
+        if partner_entry_id:
+            render_home_comment_section(
+                partner_entry_id, current_user, settings, comments_df,
+                f"partner_{today}"
+            )
     else:
         st.info(f"{partner_name}はまだ今日の記録をしていません")
 
@@ -583,6 +725,14 @@ if st.session_state.tab == 'home':
                 if delete_morning_entry(current_user, today):
                     st.success("朝の記録を削除しました")
                     st.rerun()
+
+        # 自分の朝日記へのコメントセクション
+        my_morning_entry_id = str(entry.get('id', ''))
+        if my_morning_entry_id:
+            render_home_comment_section(
+                my_morning_entry_id, current_user, settings, comments_df,
+                f"my_morning_{today}"
+            )
 
     elif not has_my_morning and not st.session_state.show_morning_form:
         if st.button("➕ 朝の気分を記録", key="add_morning_btn", type="primary", use_container_width=True):
@@ -662,6 +812,14 @@ if st.session_state.tab == 'home':
                     st.success("日記を削除しました")
                     st.rerun()
 
+        # 自分の夜日記へのコメントセクション
+        my_evening_entry_id = str(entry.get('id', ''))
+        if my_evening_entry_id:
+            render_home_comment_section(
+                my_evening_entry_id, current_user, settings, comments_df,
+                f"my_evening_{today}"
+            )
+
     elif not has_my_evening and not st.session_state.show_evening_form:
         if st.button("➕ 今日の日記を書く", key="add_evening_btn", type="primary", use_container_width=True):
             st.session_state.show_evening_form = True
@@ -733,7 +891,6 @@ elif st.session_state.tab == 'calendar':
 
     today = get_today_jst()
 
-    # session_stateで年月を管理（ボタンで正しく変化する）
     col1, col2, col3 = st.columns([1, 2, 1])
     with col1:
         if st.button("◀ 前月", key="prev_month", use_container_width=True):
@@ -762,7 +919,6 @@ elif st.session_state.tab == 'calendar':
     month = st.session_state.cal_month
     cal = calendar.monthcalendar(year, month)
 
-    # カレンダー全体をHTML gridで描画（st.columnsをループで使うとレイアウト崩れのため）
     cal_html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin:8px 0;">'
     for day_name in ["月", "火", "水", "木", "金", "土", "日"]:
         cal_html += f'<div style="text-align:center;font-weight:700;color:#ec4899;padding:4px;">{day_name}</div>'
@@ -839,7 +995,6 @@ elif st.session_state.tab == 'history':
             entry_date = entry['entry_date']
             is_my_entry = (entry_user == current_user)
 
-            # コメント数を先に取得
             if not comments_df.empty and 'entry_id' in comments_df.columns:
                 entry_comments_df = comments_df[comments_df['entry_id'] == entry['id']]
                 comment_count = len(entry_comments_df)
@@ -847,9 +1002,7 @@ elif st.session_state.tab == 'history':
                 entry_comments_df = pd.DataFrame(columns=['id', 'entry_id', 'user_id', 'comment_text', 'created_at'])
                 comment_count = 0
 
-            # ---- カード（st.containerで描画） ----
             with st.container(border=True):
-                # ヘッダー行
                 h_col1, h_col2 = st.columns([1, 6])
                 with h_col1:
                     st.markdown(f"<div style='font-size:28px;'>{entry_avatar}</div>", unsafe_allow_html=True)
@@ -858,7 +1011,6 @@ elif st.session_state.tab == 'history':
                     st.markdown(f"**{entry_name}{fav_icon}**")
                     st.caption(str(entry_date))
 
-                # 朝の記録
                 if entry['morning_stamp_emoji']:
                     st.markdown("☀️ **朝**")
                     m_col1, m_col2 = st.columns([1, 5])
@@ -869,7 +1021,6 @@ elif st.session_state.tab == 'history':
                         if entry['morning_message']:
                             st.markdown(entry['morning_message'])
 
-                # 夜の記録
                 if entry['evening_stamp_emoji']:
                     st.markdown("🌙 **夜**")
                     e_col1, e_col2 = st.columns([1, 5])
@@ -886,7 +1037,6 @@ elif st.session_state.tab == 'history':
                             unsafe_allow_html=True
                         )
 
-                # ---- アクションボタン ----
                 btn_cols = st.columns(3 if is_my_entry else 2)
                 with btn_cols[0]:
                     fav_label = "⭐ 解除" if entry['is_favorite'] else "⭐ お気に入り"
@@ -904,7 +1054,6 @@ elif st.session_state.tab == 'history':
                             st.session_state[f'confirm_delete_{entry["id"]}'] = True
                             st.rerun()
 
-                # 削除確認
                 if st.session_state.get(f'confirm_delete_{entry["id"]}', False):
                     st.warning("本当に削除しますか？この操作は取り消せません。")
                     dc1, dc2 = st.columns(2)
@@ -919,7 +1068,6 @@ elif st.session_state.tab == 'history':
                             st.session_state.pop(f'confirm_delete_{entry["id"]}', None)
                             st.rerun()
 
-                # ---- コメントセクション ----
                 if st.session_state.get(f'show_comments_{entry["id"]}', False):
                     st.markdown("---")
                     st.markdown("**💬 コメント**")
@@ -968,6 +1116,7 @@ elif st.session_state.tab == 'settings':
                      key="switch_to_a", use_container_width=True,
                      type="primary" if current_user == 'A' else "secondary"):
             st.session_state.current_user = 'A'
+            st.session_state.user_selected = True
             st.rerun()
     with col2:
         user_b_name = settings.get('user_b_name', 'ユーザーB')
@@ -975,6 +1124,7 @@ elif st.session_state.tab == 'settings':
                      key="switch_to_b", use_container_width=True,
                      type="primary" if current_user == 'B' else "secondary"):
             st.session_state.current_user = 'B'
+            st.session_state.user_selected = True
             st.rerun()
 
     st.markdown("---")
