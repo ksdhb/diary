@@ -633,10 +633,13 @@ if st.session_state.tab == 'home':
 
     partner_name = settings.get(f'user_{partner_user.lower()}_name', f'ユーザー{partner_user}')
 
-    # ===== パートナーからのコメント通知 =====
-    my_all_entries = entries_df[entries_df['user_id'] == current_user]
-    if not my_all_entries.empty and not comments_df.empty and 'entry_id' in comments_df.columns:
-        my_entry_ids = my_all_entries['id'].astype(str).tolist()
+    # ===== パートナーからのコメント通知（今日の自分のエントリーのみ） =====
+    my_today_entries = entries_df[
+        (entries_df['user_id'] == current_user) &
+        (entries_df['entry_date'] == today)
+    ]
+    if not my_today_entries.empty and not comments_df.empty and 'entry_id' in comments_df.columns:
+        my_entry_ids = my_today_entries['id'].astype(str).tolist()
         received_comments = comments_df[
             (comments_df['entry_id'].astype(str).isin(my_entry_ids)) &
             (comments_df['user_id'] != current_user)
@@ -649,7 +652,7 @@ if st.session_state.tab == 'home':
                 cu = cmt['user_id']
                 ca = settings.get(f'user_{cu.lower()}_avatar', '👤')
                 # 対応するエントリーの日付を取得
-                cmt_entry = my_all_entries[my_all_entries['id'].astype(str) == str(cmt['entry_id'])]
+                cmt_entry = my_today_entries[my_today_entries['id'].astype(str) == str(cmt['entry_id'])]
                 entry_date_str = str(cmt_entry.iloc[0]['entry_date']) if not cmt_entry.empty else ''
                 st.markdown(f"""
                 <div class="notif-box">
