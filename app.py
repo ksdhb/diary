@@ -456,7 +456,7 @@ def process_image(uploaded_file):
 
 
 def render_home_comment_section(entry_id, current_user, settings, comments_df, section_key):
-    """ホーム画面用コメントセクション（朝・夜・パートナー共用）"""
+    """ホーム画面用コメントセクション（相手の投稿へのコメントのみ）"""
     if not entry_id:
         return
     if comments_df.empty or 'entry_id' not in comments_df.columns:
@@ -512,7 +512,7 @@ def render_home_comment_section(entry_id, current_user, settings, comments_df, s
 defaults = {
     'tab': 'home',
     'current_user': 'A',
-    'user_selected': False,          # ← 追加: セッションごとにユーザー選択を要求
+    'user_selected': False,
     'show_morning_form': False,
     'show_evening_form': False,
     'selected_morning_stamp': None,
@@ -646,12 +646,10 @@ if st.session_state.tab == 'home':
         ]
         if not received_comments.empty:
             st.markdown(f"### 💌 {partner_name}からのコメント")
-            # 新しい順に最大5件表示
             display_comments = received_comments.sort_values('created_at', ascending=False).head(5)
             for _, cmt in display_comments.iterrows():
                 cu = cmt['user_id']
                 ca = settings.get(f'user_{cu.lower()}_avatar', '👤')
-                # 対応するエントリーの日付を取得
                 cmt_entry = my_today_entries[my_today_entries['id'].astype(str) == str(cmt['entry_id'])]
                 entry_date_str = str(cmt_entry.iloc[0]['entry_date']) if not cmt_entry.empty else ''
                 st.markdown(f"""
@@ -683,18 +681,28 @@ if st.session_state.tab == 'home':
                 </div>
             </div>"""
         if has_partner_evening:
+            evening_text = partner_data['evening_diary_text'] if partner_data['evening_diary_text'] else ''
             card_html += f"""
             <div>
                 <div style="font-size: 12px; color: #9ca3af; margin-bottom: 4px;">🌙 夜</div>
-                <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: {'8px' if evening_text else '0'};">
                     <div style="font-size: 32px;">{partner_data['evening_stamp_emoji']}</div>
                     <div style="font-weight: 700; color: #ec4899;">{partner_data['evening_stamp_label']}</div>
                 </div>
+                {f'<div style="color: #374151; white-space: pre-wrap; font-size: 14px;">{evening_text}</div>' if evening_text else ''}
             </div>"""
         card_html += '</div>'
         st.markdown(card_html, unsafe_allow_html=True)
 
-        # パートナーのエントリーへのコメントボタン（朝・夜どちらでも）
+        # パートナーの投稿への画像表示
+        if has_partner_evening and partner_data['image_data']:
+            st.markdown(
+                f'<img src="data:image/jpeg;base64,{partner_data["image_data"]}" '
+                f'style="max-width:100%;border-radius:12px;margin-top:4px;">',
+                unsafe_allow_html=True
+            )
+
+        # パートナーのエントリーへのコメントボタン（相手の投稿にのみ表示）
         partner_entry_id = str(partner_data.get('id', ''))
         if partner_entry_id:
             render_home_comment_section(
@@ -728,14 +736,7 @@ if st.session_state.tab == 'home':
                 if delete_morning_entry(current_user, today):
                     st.success("朝の記録を削除しました")
                     st.rerun()
-
-        # 自分の朝日記へのコメントセクション
-        my_morning_entry_id = str(entry.get('id', ''))
-        if my_morning_entry_id:
-            render_home_comment_section(
-                my_morning_entry_id, current_user, settings, comments_df,
-                f"my_morning_{today}"
-            )
+        # ※自分の投稿へのコメント欄は表示しない
 
     elif not has_my_morning and not st.session_state.show_morning_form:
         if st.button("➕ 朝の気分を記録", key="add_morning_btn", type="primary", use_container_width=True):
@@ -814,14 +815,7 @@ if st.session_state.tab == 'home':
                 if delete_evening_entry(current_user, today):
                     st.success("日記を削除しました")
                     st.rerun()
-
-        # 自分の夜日記へのコメントセクション
-        my_evening_entry_id = str(entry.get('id', ''))
-        if my_evening_entry_id:
-            render_home_comment_section(
-                my_evening_entry_id, current_user, settings, comments_df,
-                f"my_evening_{today}"
-            )
+        # ※自分の投稿へのコメント欄は表示しない
 
     elif not has_my_evening and not st.session_state.show_evening_form:
         if st.button("➕ 今日の日記を書く", key="add_evening_btn", type="primary", use_container_width=True):
